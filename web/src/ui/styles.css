@@ -1,0 +1,161 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1a1a1a;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: #f7f7f8;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  flex: 1;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+section {
+  background: #fff;
+  border: 1px solid #e3e3e6;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.row input,
+.row select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #c8c8cc;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.muted {
+  color: #888;
+}
+
+.error {
+  color: #b00020;
+}
+
+.pill {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+
+.pill-online {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.pill-offline {
+  background: #fce8e6;
+  color: #c5221f;
+}
+
+.outbox {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.outbox li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tag {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #eee;
+}
+
+.tag-inflight {
+  background: #e8f0fe;
+  color: #1a73e8;
+}
+
+.tag-warn {
+  background: #fef7e0;
+  color: #b06000;
+}
+
+.conflict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: #fef7e0;
+  border: 1px solid #f3d27a;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
