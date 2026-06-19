@@ -66,11 +66,21 @@ describe('InventoryClient', () => {
 
   it('lists an item movements and url-encodes the id', async () => {
     const { client: c, calls } = client(() =>
-      json(200, { movements: [movement] }),
+      json(200, { movements: [movement], nextCursor: null }),
     );
     const res = await c.listMovements('a/b');
     expect(res.movements[0]?.id).toBe('m1');
+    expect(res.nextCursor).toBeNull();
     expect(calls[0]?.url).toBe('http://example.test/api/items/a%2Fb/movements');
+  });
+
+  it('passes limit and cursor as query params and returns nextCursor', async () => {
+    const { client: c, calls } = client(() =>
+      json(200, { items: [{ ...item, stock: 0 }], nextCursor: 'next123' }),
+    );
+    const res = await c.listItems({ limit: 2, cursor: 'abc' });
+    expect(res.nextCursor).toBe('next123');
+    expect(calls[0]?.url).toBe('http://example.test/api/items?limit=2&cursor=abc');
   });
 
   it('throws a 404 when listing movements for an unknown item', async () => {

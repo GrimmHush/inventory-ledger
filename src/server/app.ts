@@ -6,7 +6,15 @@ import express, {
 } from 'express';
 import { z } from 'zod';
 import { InMemoryLedgerStore, type LedgerStore } from './store';
-import { itemSchema, movementSchema, syncBodySchema } from './validation';
+import { decodeCursor } from './pagination';
+import {
+  itemCursorSchema,
+  itemSchema,
+  movementCursorSchema,
+  movementSchema,
+  paginationQuerySchema,
+  syncBodySchema,
+} from './validation';
 
 export interface AppOptions {
   apiKey: string;
@@ -32,6 +40,33 @@ function parseBody<S extends z.ZodType>(
     return undefined;
   }
   return result.data;
+}
+
+/**
+ * Parses pagination query params and decodes the cursor against `cursorSchema`,
+ * replying 400 on a bad query or cursor. Returns `{ limit, cursor }` or
+ * `undefined` if it already responded.
+ */
+function parsePage<C>(
+  cursorSchema: z.ZodType<C>,
+  req: Request,
+  res: Response,
+): { limit: number; cursor: C | null } | undefined {
+  const query = paginationQuerySchema.safeParse(req.query);
+  if (!query.success) {
+    res.status(400).json({ error: 'invalid query', issues: query.error.issues });
+    return undefined;
+  }
+  let cursor: C | null = null;
+  if (query.data.cursor !== undefined) {
+    const decoded = cursorSchema.safeParse(decodeCursor(query.data.cursor));
+    if (!decoded.success) {
+      res.status(400).json({ error: 'invalid cursor' });
+      return undefined;
+    }
+    cursor = decoded.data;
+  }
+  return { limit: query.data.limit, cursor };
 }
 
 /**
@@ -62,22 +97,28 @@ export function createApp(options: AppOptions): Express {
     next();
   });
 
-  app.get('/api/items', (_req, res, next) => {
+  app.get('/api/items', (req, res, next) => {
+    const page = parsePage(itemCursorSchema, req, res);
+    if (!page) return;
     store
-      .items()
-      .then((items) => res.json({ items }))
+      .items(page)
+      .then((result) =>
+        res.json({ items: result.data, nextCursor: result.nextCursor }),
+      )
       .catch(next);
   });
 
   app.get('/api/items/:id/movements', (req, res, next) => {
+    const page = parsePage(movementCursorSchema, req, res);
+    if (!page) return;
     store
-      .itemMovements(req.params.id)
-      .then((movements) => {
-        if (movements === null) {
+      .itemMovements(req.params.id, page)
+      .then((result) => {
+        if (result === null) {
           res.status(404).json({ error: `unknown item ${req.params.id}` });
           return;
         }
-        res.json({ movements });
+        res.json({ movements: result.data, nextCursor: result.nextCursor });
       })
       .catch(next);
   });

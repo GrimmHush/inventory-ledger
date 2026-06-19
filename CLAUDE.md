@@ -74,4 +74,6 @@ Two implementations satisfy the interface, both reusing the same pure `merge`:
 
 Stock is exposed as a derived aggregate on `GET /api/items`; the underlying ledger is read via `GET /api/items/:id/movements`, which returns an item's movements in canonical order (`occurredAt`, then `id`) or 404 if the item is unknown. That read funnels through `store.itemMovements`, so Postgres filters/orders at the query level rather than `app.ts` folding full state.
 
+Both list endpoints are **cursor-paginated** (`?limit=&cursor=`, see `src/server/pagination.ts`): keyset, not offset, so a cursor names a position by sort key (items by `id`; movements by `occurredAt` then `id`) and stays stable as rows are appended. The cursor is an opaque base64url key, decoded and shape-validated at the edge (400 on a bad cursor/limit); the store seeks past it via index and returns `{ data, nextCursor }`. Keep the in-memory and Prisma stores' ordering identical to the cursor's sort key, or pages will skip or repeat rows.
+
 Async route handlers forward failures with `.catch(next)` to a terminal error-handling middleware that replies with a JSON 500 (`{ error: 'internal server error' }`), so the API never falls back to Express's default HTML error page. Any new route must keep that `.catch(next)` so unexpected errors stay JSON.

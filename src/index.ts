@@ -5,6 +5,7 @@ export * from './sync';
 export { InventoryClient, InventoryApiError } from './sdk/client';
 export type {
   ClientOptions,
+  PageQuery,
   UpsertItemResult,
   SupersededOutcome,
 } from './sdk/client';

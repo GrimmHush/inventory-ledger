@@ -2,6 +2,14 @@ import { deriveStockByItem, sortMovements } from '../domain/ledger';
 import type { Item, Movement } from '../domain/types';
 import { emptyState, merge } from '../sync/merge';
 import type { LedgerState, MergeResult, SyncOp } from '../sync/types';
+import {
+  DEFAULT_LIMIT,
+  encodeCursor,
+  isAfterMovementCursor,
+  type ItemsPageParams,
+  type MovementsPageParams,
+  type Page,
+} from './pagination';
 
 export interface ItemWithStock extends Item {
   stock: number;
@@ -17,9 +25,13 @@ export interface LedgerStore {
   upsertItem(item: Item): Promise<MergeResult>;
   addMovement(movement: Movement): Promise<MergeResult>;
   applyOps(ops: readonly SyncOp[]): Promise<MergeResult>;
-  items(): Promise<ItemWithStock[]>;
-  /** One item's movements in ledger order, or `null` if the item is unknown. */
-  itemMovements(itemId: string): Promise<Movement[] | null>;
+  /** A page of items (ascending by id) with derived stock. */
+  items(params?: ItemsPageParams): Promise<Page<ItemWithStock>>;
+  /** A page of one item's movements in ledger order, or `null` if the item is unknown. */
+  itemMovements(
+    itemId: string,
+    params?: MovementsPageParams,
+  ): Promise<Page<Movement> | null>;
   snapshot(): Promise<LedgerState>;
   /** Resolves if the backing store is reachable; rejects otherwise. Drives `/health`. */
   ping(): Promise<void>;
@@ -79,16 +91,40 @@ export class InMemoryLedgerStore implements LedgerStore {
     return Promise.resolve(result);
   }
 
-  items(): Promise<ItemWithStock[]> {
-    return Promise.resolve(itemsWithStock(this.state));
+  items(params?: ItemsPageParams): Promise<Page<ItemWithStock>> {
+    const limit = params?.limit ?? DEFAULT_LIMIT;
+    const cursor = params?.cursor ?? null;
+    const all = itemsWithStock(this.state).sort((a, b) =>
+      a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+    );
+    const after = cursor ? all.filter((i) => i.id > cursor.id) : all;
+    const data = after.slice(0, limit);
+    const last = data.at(-1);
+    const nextCursor =
+      after.length > limit && last ? encodeCursor({ id: last.id }) : null;
+    return Promise.resolve({ data, nextCursor });
   }
 
-  itemMovements(itemId: string): Promise<Movement[] | null> {
+  itemMovements(
+    itemId: string,
+    params?: MovementsPageParams,
+  ): Promise<Page<Movement> | null> {
     if (!this.state.items[itemId]) return Promise.resolve(null);
-    const movements = Object.values(this.state.movements).filter(
-      (m) => m.itemId === itemId,
+    const limit = params?.limit ?? DEFAULT_LIMIT;
+    const cursor = params?.cursor ?? null;
+    const all = sortMovements(
+      Object.values(this.state.movements).filter((m) => m.itemId === itemId),
     );
-    return Promise.resolve(sortMovements(movements));
+    const after = cursor
+      ? all.filter((m) => isAfterMovementCursor(m, cursor))
+      : all;
+    const data = after.slice(0, limit);
+    const last = data.at(-1);
+    const nextCursor =
+      after.length > limit && last
+        ? encodeCursor({ occurredAt: last.occurredAt, id: last.id })
+        : null;
+    return Promise.resolve({ data, nextCursor });
   }
 
   snapshot(): Promise<LedgerState> {

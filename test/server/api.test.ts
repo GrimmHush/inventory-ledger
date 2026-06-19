@@ -105,6 +105,51 @@ describe('inventory API', () => {
     expect(res.body.movements.map((m: { id: string }) => m.id)).toEqual(['m1', 'm2']);
   });
 
+  it('paginates the items list with a cursor', async () => {
+    const server = app();
+    for (const id of ['a', 'b', 'c']) {
+      await request(server)
+        .post('/api/items')
+        .set('x-api-key', API_KEY)
+        .send({
+          id,
+          sku: id,
+          name: id,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        });
+    }
+
+    const first = await request(server)
+      .get('/api/items?limit=2')
+      .set('x-api-key', API_KEY)
+      .expect(200);
+    expect(first.body.items.map((i: { id: string }) => i.id)).toEqual(['a', 'b']);
+    expect(first.body.nextCursor).toBeTruthy();
+
+    const second = await request(server)
+      .get(`/api/items?limit=2&cursor=${encodeURIComponent(first.body.nextCursor)}`)
+      .set('x-api-key', API_KEY)
+      .expect(200);
+    expect(second.body.items.map((i: { id: string }) => i.id)).toEqual(['c']);
+    expect(second.body.nextCursor).toBeNull();
+  });
+
+  it('returns 400 for an invalid limit', async () => {
+    const res = await request(app())
+      .get('/api/items?limit=0')
+      .set('x-api-key', API_KEY);
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for a malformed cursor', async () => {
+    const res = await request(app())
+      .get('/api/items?cursor=not-a-real-cursor')
+      .set('x-api-key', API_KEY);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid cursor');
+  });
+
   it('returns 404 listing movements for an unknown item', async () => {
     const res = await request(app())
       .get('/api/items/nope/movements')

@@ -9,6 +9,13 @@ import {
   type ItemWithStock,
   type LedgerStore,
 } from './store';
+import {
+  DEFAULT_LIMIT,
+  encodeCursor,
+  type ItemsPageParams,
+  type MovementsPageParams,
+  type Page,
+} from './pagination';
 
 type ItemRow = {
   id: string;
@@ -208,26 +215,60 @@ export class PrismaLedgerStore implements LedgerStore {
     return result;
   }
 
-  async items(): Promise<ItemWithStock[]> {
-    // Reads the stock checkpoint directly — no movement fold.
-    const rows = await this.prisma.item.findMany();
-    return rows.map((row) => ({ ...toItem(row), stock: row.stock }));
+  async items(params?: ItemsPageParams): Promise<Page<ItemWithStock>> {
+    const limit = params?.limit ?? DEFAULT_LIMIT;
+    const cursor = params?.cursor ?? null;
+    // Reads the stock checkpoint directly — no movement fold — and keyset-seeks
+    // past the cursor via the primary-key index.
+    const rows = await this.prisma.item.findMany({
+      where: cursor ? { id: { gt: cursor.id } } : undefined,
+      orderBy: { id: 'asc' },
+      take: limit + 1,
+    });
+    const hasMore = rows.length > limit;
+    const data = rows
+      .slice(0, limit)
+      .map((row) => ({ ...toItem(row), stock: row.stock }));
+    const last = data.at(-1);
+    const nextCursor = hasMore && last ? encodeCursor({ id: last.id }) : null;
+    return { data, nextCursor };
   }
 
-  async itemMovements(itemId: string): Promise<Movement[] | null> {
+  async itemMovements(
+    itemId: string,
+    params?: MovementsPageParams,
+  ): Promise<Page<Movement> | null> {
     const item = await this.prisma.item.findUnique({
       where: { id: itemId },
       select: { id: true },
     });
     if (!item) return null;
 
+    const limit = params?.limit ?? DEFAULT_LIMIT;
+    const cursor = params?.cursor ?? null;
     // Ledger order — occurredAt, then id as the tie-breaker — matches
-    // `sortMovements` in the domain, kept deterministic at the query level.
+    // `sortMovements` in the domain, with a composite keyset seek past the cursor.
+    const where: Prisma.MovementWhereInput = { itemId };
+    if (cursor) {
+      const at = new Date(cursor.occurredAt);
+      where.OR = [
+        { occurredAt: { gt: at } },
+        { occurredAt: at, id: { gt: cursor.id } },
+      ];
+    }
     const rows = await this.prisma.movement.findMany({
-      where: { itemId },
+      where,
       orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+      take: limit + 1,
     });
-    return rows.map(toMovement);
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(toMovement);
+    const last = data.at(-1);
+    const nextCursor =
+      hasMore && last
+        ? encodeCursor({ occurredAt: last.occurredAt, id: last.id })
+        : null;
+    return { data, nextCursor };
   }
 
   async ping(): Promise<void> {

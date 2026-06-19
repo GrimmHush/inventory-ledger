@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Item, Movement } from '../domain/types';
 import type { SyncOp } from '../sync/types';
+import { MAX_LIMIT, DEFAULT_LIMIT } from './pagination';
 
 // Request-body schemas live at the HTTP edge only — the domain and sync layers
 // stay free of any validation library. These enforce *structure*; the business
@@ -45,6 +46,20 @@ const syncOpSchema = z.discriminatedUnion('kind', [
 
 export const syncBodySchema = z.object({
   ops: z.array(syncOpSchema),
+});
+
+// Pagination query (?limit=&cursor=). `limit` is coerced from the query string
+// and clamped; `cursor` is an opaque string decoded per endpoint below.
+export const paginationQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
+  cursor: z.string().optional(),
+});
+
+export const itemCursorSchema = z.object({ id: z.string().min(1) });
+
+export const movementCursorSchema = z.object({
+  occurredAt: z.iso.datetime(),
+  id: z.string().min(1),
 });
 
 // Compile-time guarantee that the schemas stay in lock-step with the domain

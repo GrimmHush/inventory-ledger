@@ -61,7 +61,7 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
     );
     expect(applied.outcomes[0]).toEqual({ id: 'm1', status: 'applied' });
 
-    const items = await store.items();
+    const { data: items } = await store.items();
     expect(items).toHaveLength(1);
     expect(items[0]?.stock).toBe(12);
 
@@ -80,9 +80,36 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
       move({ id: 'm1', type: 'in', quantity: 10, occurredAt: '2026-01-02T00:00:00.000Z' }),
     );
 
-    const movements = await store.itemMovements('widget');
-    expect(movements?.map((m) => m.id)).toEqual(['m1', 'm2']);
+    const page = await store.itemMovements('widget');
+    expect(page?.data.map((m) => m.id)).toEqual(['m1', 'm2']);
     expect(await store.itemMovements('nope')).toBeNull();
+  });
+
+  it('keyset-paginates an item movements in ledger order', async () => {
+    await store.upsertItem(item({ id: 'widget' }));
+    for (const day of ['02', '03', '04', '05', '06']) {
+      await store.addMovement(
+        move({ id: `m-${day}`, type: 'in', quantity: 1, occurredAt: `2026-01-${day}T00:00:00.000Z` }),
+      );
+    }
+
+    const first = await store.itemMovements('widget', { limit: 2, cursor: null });
+    expect(first?.data.map((m) => m.id)).toEqual(['m-02', 'm-03']);
+    expect(first?.nextCursor).toBeTruthy();
+
+    const collected: string[] = [...(first?.data ?? []).map((m) => m.id)];
+    let cursor = first?.nextCursor ?? null;
+    while (cursor) {
+      const decoded = JSON.parse(
+        Buffer.from(cursor, 'base64url').toString('utf8'),
+      ) as { occurredAt: string; id: string };
+      const next = await store.itemMovements('widget', { limit: 2, cursor: decoded });
+      collected.push(...(next?.data ?? []).map((m) => m.id));
+      cursor = next?.nextCursor ?? null;
+    }
+
+    // Every movement, once, in ledger order, with no gaps or repeats.
+    expect(collected).toEqual(['m-02', 'm-03', 'm-04', 'm-05', 'm-06']);
   });
 
   it('keeps the stock checkpoint consistent with the movement log', async () => {
@@ -97,7 +124,7 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
       move({ id: 'm3', type: 'adjust', quantity: -1, occurredAt: '2026-01-04T00:00:00.000Z' }),
     );
 
-    const items = await store.items();
+    const { data: items } = await store.items();
     expect(items[0]?.stock).toBe(5); // 10 - 4 - 1
 
     // The cached column equals folding the log, and items() reads it directly.
@@ -121,7 +148,7 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
     );
     expect(res.outcomes[0]?.status).toBe('rejected');
 
-    const items = await store.items();
+    const { data: items } = await store.items();
     expect(items[0]?.stock).toBe(5); // unchanged; the backdated out was not applied
   });
 
@@ -159,7 +186,7 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
 
     // The invariant held at the database: exactly one withdrawal persisted and
     // stock never went negative.
-    const items = await store.items();
+    const { data: items } = await store.items();
     expect(items[0]?.stock).toBe(0);
     expect(await prisma.movement.count()).toBe(2);
   });
@@ -182,7 +209,7 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
     );
 
     expect(stale.outcomes[0]?.status).toBe('superseded');
-    const items = await store.items();
+    const { data: items } = await store.items();
     expect(items[0]?.name).toBe('New');
   });
 

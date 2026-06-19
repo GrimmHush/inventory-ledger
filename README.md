@@ -88,13 +88,15 @@ Every route under `/api/*` requires the `x-api-key` header. `/health` does not.
 | Method & path | Purpose | Notable responses |
 | --- | --- | --- |
 | `GET /health` | Readiness check — pings the store (a DB round-trip for Postgres) | `200 { ok: true }`, `503` when the store is unreachable |
-| `GET /api/items` | List items with **derived** stock | `200 { items }` |
-| `GET /api/items/:id/movements` | One item's ledger in canonical order | `200 { movements }`, `404` if unknown |
+| `GET /api/items` | List items with **derived** stock (paginated) | `200 { items, nextCursor }` |
+| `GET /api/items/:id/movements` | One item's ledger in canonical order (paginated) | `200 { movements, nextCursor }`, `404` if unknown |
 | `POST /api/items` | Upsert item metadata (last-write-wins) | `201 { item }`, `409` if superseded, `400` if invalid |
 | `POST /api/movements` | Append a movement | `201` outcome, `422` if rejected, `400` if invalid |
 | `POST /api/sync` | Reconcile a batch of offline ops | `200` merge result, `400` if invalid |
 
 Request bodies are validated at the edge with zod; the business invariants (no overdraw, positive `in`/`out`, non-zero `adjust`) are enforced inside the merge.
+
+The two list endpoints are **cursor-paginated**: pass `?limit=` (default 50, max 200) and `?cursor=`, and follow the `nextCursor` in each response until it's `null`. Cursors are keyset-based (items by id, movements by `occurredAt` then id), so they stay stable as new rows are appended.
 
 ## Architecture
 

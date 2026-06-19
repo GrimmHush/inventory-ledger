@@ -27,6 +27,22 @@ export class InventoryApiError extends Error {
   }
 }
 
+/** Pagination controls for the list endpoints. `cursor` comes from a prior `nextCursor`. */
+export interface PageQuery {
+  limit?: number;
+  cursor?: string;
+}
+
+/** Builds a `?limit=&cursor=` query string, or '' when there's nothing to add. */
+function query(params?: PageQuery): string {
+  if (!params) return '';
+  const search = new URLSearchParams();
+  if (params.limit !== undefined) search.set('limit', String(params.limit));
+  if (params.cursor !== undefined) search.set('cursor', params.cursor);
+  const qs = search.toString();
+  return qs ? `?${qs}` : '';
+}
+
 /** The superseded branch of an op outcome (stale last-write-wins edit). */
 export type SupersededOutcome = Extract<OpOutcome, { status: 'superseded' }>;
 
@@ -52,17 +68,26 @@ export class InventoryClient {
     this.doFetch = options.fetch ?? globalThis.fetch;
   }
 
-  listItems(): Promise<{ items: ItemWithStock[] }> {
-    return this.request('/api/items', { method: 'GET' }, [200]);
+  /**
+   * List items (ascending by id) with derived stock. Pass `limit`/`cursor` to
+   * page; `nextCursor` is non-null when more pages remain.
+   */
+  listItems(
+    params?: PageQuery,
+  ): Promise<{ items: ItemWithStock[]; nextCursor: string | null }> {
+    return this.request(`/api/items${query(params)}`, { method: 'GET' }, [200]);
   }
 
   /**
-   * Fetch one item's movements in ledger order. Throws `InventoryApiError`
-   * (404) if the item is unknown.
+   * Fetch a page of one item's movements in ledger order. Throws
+   * `InventoryApiError` (404) if the item is unknown.
    */
-  listMovements(itemId: string): Promise<{ movements: Movement[] }> {
+  listMovements(
+    itemId: string,
+    params?: PageQuery,
+  ): Promise<{ movements: Movement[]; nextCursor: string | null }> {
     return this.request(
-      `/api/items/${encodeURIComponent(itemId)}/movements`,
+      `/api/items/${encodeURIComponent(itemId)}/movements${query(params)}`,
       { method: 'GET' },
       [200],
     );
