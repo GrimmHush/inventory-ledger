@@ -7,6 +7,21 @@
   "engines": {
     "node": ">=20"
   },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsx watch src/server/main.ts",

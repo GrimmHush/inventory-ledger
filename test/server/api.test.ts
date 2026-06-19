@@ -18,7 +18,6 @@ function failingStore(): LedgerStore {
     applyOps: boom,
     items: boom,
     itemMovements: boom,
-    snapshot: boom,
     ping: boom,
   };
 }

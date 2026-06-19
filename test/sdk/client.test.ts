@@ -83,6 +83,49 @@ describe('InventoryClient', () => {
     expect(calls[0]?.url).toBe('http://example.test/api/items?limit=2&cursor=abc');
   });
 
+  it('iterates every item across pages, following nextCursor', async () => {
+    const pages: Record<string, unknown> = {
+      '': { items: [{ ...item, id: 'a', stock: 1 }], nextCursor: 'c1' },
+      c1: { items: [{ ...item, id: 'b', stock: 2 }], nextCursor: 'c2' },
+      c2: { items: [{ ...item, id: 'c', stock: 3 }], nextCursor: null },
+    };
+    const { client: c, calls } = client((call) => {
+      const cursor = new URL(call.url).searchParams.get('cursor') ?? '';
+      return json(200, pages[cursor]);
+    });
+
+    const ids: string[] = [];
+    for await (const it of c.iterateItems()) ids.push(it.id);
+
+    expect(ids).toEqual(['a', 'b', 'c']);
+    // one request per page; stops when nextCursor is null
+    expect(calls).toHaveLength(3);
+    expect(new URL(calls[1]!.url).searchParams.get('cursor')).toBe('c1');
+  });
+
+  it('passes the page-size limit through while iterating movements', async () => {
+    const { client: c, calls } = client(() =>
+      json(200, { movements: [movement], nextCursor: null }),
+    );
+
+    const collected: string[] = [];
+    for await (const m of c.iterateMovements('widget', { limit: 10 })) {
+      collected.push(m.id);
+    }
+
+    expect(collected).toEqual(['m1']);
+    expect(new URL(calls[0]!.url).searchParams.get('limit')).toBe('10');
+  });
+
+  it('propagates a 404 from the first page of iterateMovements', async () => {
+    const { client: c } = client(() => json(404, { error: 'unknown item nope' }));
+    const iterator = c.iterateMovements('nope');
+    await expect(iterator.next()).rejects.toMatchObject({
+      name: 'InventoryApiError',
+      status: 404,
+    });
+  });
+
   it('throws a 404 when listing movements for an unknown item', async () => {
     const { client: c } = client(() => json(404, { error: 'unknown item nope' }));
     await expect(c.listMovements('nope')).rejects.toMatchObject({

@@ -37,7 +37,6 @@ export interface LedgerStore {
     itemId: string,
     params?: MovementsPageParams,
   ): Promise<Page<Movement> | null>;
-  snapshot(): Promise<LedgerState>;
   /** Resolves if the backing store is reachable; rejects otherwise. Drives `/health`. */
   ping(): Promise<void>;
 }
@@ -130,10 +129,6 @@ export class InMemoryLedgerStore implements LedgerStore {
         ? encodeCursor({ occurredAt: last.occurredAt, id: last.id })
         : null;
     return Promise.resolve({ data, nextCursor });
-  }
-
-  snapshot(): Promise<LedgerState> {
-    return Promise.resolve(this.state);
   }
 
   ping(): Promise<void> {
