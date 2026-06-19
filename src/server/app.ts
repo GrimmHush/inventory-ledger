@@ -105,5 +105,16 @@ export function createApp(options: AppOptions): Express {
       .catch(next);
   });
 
+  // Terminal error handler. Every async route forwards failures here via
+  // `.catch(next)`, so an unexpected error (e.g. a dropped DB connection)
+  // returns JSON 500 rather than Express's default HTML page. The four
+  // parameters — including the unused `next` — are what mark this as an error
+  // handler to Express.
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    console.error(err);
+    if (res.headersSent) return;
+    res.status(500).json({ error: 'internal server error' });
+  });
+
   return app;
 }

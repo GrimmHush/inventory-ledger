@@ -1,11 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/server/app';
+import type { LedgerStore } from '../../src/server/store';
 
 const API_KEY = 'test-key';
 
 function app() {
   return createApp({ apiKey: API_KEY });
+}
+
+/** A store whose every method rejects, to exercise the error handler. */
+function failingStore(): LedgerStore {
+  const boom = () => Promise.reject(new Error('boom'));
+  return {
+    upsertItem: boom,
+    addMovement: boom,
+    applyOps: boom,
+    items: boom,
+    snapshot: boom,
+  };
 }
 
 describe('inventory API', () => {
@@ -114,5 +127,17 @@ describe('inventory API', () => {
       .send({ ops: [{ kind: 'upsertItem' }] }); // missing id, clientSeq, item, ...
 
     expect(res.status).toBe(400);
+  });
+
+  it('returns a JSON 500 when the store throws unexpectedly', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const server = createApp({ apiKey: API_KEY, store: failingStore() });
+
+    const res = await request(server).get('/api/items').set('x-api-key', API_KEY);
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'internal server error' });
+    expect(res.type).toMatch(/json/);
+    errorSpy.mockRestore();
   });
 });
