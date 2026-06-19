@@ -1,12 +1,14 @@
 # Offline-first web client — design plan
 
-Status: **implemented (first pass).** Build steps 1–4 (§13) are done: workspace
-wiring, the framework-free engine (`db`/`outbox`/`optimistic`/`sync-controller`),
-the React UI, and conflict surfacing + crash recovery. The engine has unit tests
-(`test/outbox.test.ts`); component tests (§12) are still open. This document remains
-the spec — see [`README.md`](./README.md) to run the demo. It is the first item on
-the root roadmap ("A browser/local client that queues ops in IndexedDB and syncs on
-reconnect").
+Status: **implemented.** Build steps 1–5 (§13) are done: workspace wiring, the
+framework-free engine (`db`/`outbox`/`optimistic`/`sync-controller`), the React UI,
+conflict surfacing + crash recovery, and tests — engine unit tests
+(`test/outbox.test.ts`), a store-level integration test driving the full offline →
+flush → reconcile loop incl. a conflict-kept case (`test/store.test.ts`), and
+component tests for the conflict UI (`test/ui.test.tsx`). Remaining: the manual
+README demo walkthrough (needs a browser). This document remains the spec — see
+[`README.md`](./README.md) to run it. First item on the root roadmap ("A
+browser/local client that queues ops in IndexedDB and syncs on reconnect").
 
 ## 1. Goal & acceptance
 

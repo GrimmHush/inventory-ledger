@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { store } from '../store';
 import type { ItemView } from '../optimistic';
 
@@ -6,7 +6,7 @@ export function ItemList({ items }: { items: ItemView[] }) {
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
 
-  function submit(e: React.FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
     if (!sku.trim() || !name.trim()) return;
     void store.addItem({ sku: sku.trim(), name: name.trim() });

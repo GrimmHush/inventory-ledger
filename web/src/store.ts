@@ -71,9 +71,13 @@ async function readMirror(client: InventoryClient): Promise<LedgerState> {
  * immutable snapshot to React. All sync *logic* lives in the framework-free
  * modules it calls; this layer is just orchestration + the external-store contract.
  *
- * `client` is injectable so tests can drive it with a mock fetch + fake-indexeddb.
+ * `client` and `dbName` are injectable so tests can drive it with a mock client and
+ * an isolated fake-indexeddb database.
  */
-export function createAppStore(client: InventoryClient = defaultClient): AppStore {
+export function createAppStore(
+  client: InventoryClient = defaultClient,
+  options: { dbName?: string } = {},
+): AppStore {
   let db: OutboxDb | null = null;
   let mirror: LedgerState = emptyState();
   const listeners = new Set<() => void>();
@@ -127,7 +131,7 @@ export function createAppStore(client: InventoryClient = defaultClient): AppStor
     },
 
     async init() {
-      db = await openOutboxDb();
+      db = await openOutboxDb(options.dbName);
       await recoverInflight(db);
 
       if (typeof window !== 'undefined') {

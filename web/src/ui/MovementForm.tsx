@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import type { Movement } from 'inventory-ledger';
 import { store } from '../store';
 import type { ItemView } from '../optimistic';
@@ -11,7 +11,7 @@ export function MovementForm({ items }: { items: ItemView[] }) {
 
   const selected = itemId || items[0]?.id || '';
 
-  function submit(e: React.FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
     const qty = Number(quantity);
     if (!selected || !Number.isFinite(qty)) return;
