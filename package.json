@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "tsx watch src/server/main.ts",
     "start": "tsx src/server/main.ts",
     "typecheck": "tsc --noEmit",
