@@ -24,6 +24,11 @@ export interface ItemWithStock extends Item {
 export interface LedgerStore {
   upsertItem(item: Item): Promise<MergeResult>;
   addMovement(movement: Movement): Promise<MergeResult>;
+  // `MergeResult.outcomes` is the authoritative per-op result and the only part
+  // exposed by the API. `MergeResult.state` is for internal use and is *not*
+  // uniform across implementations — the Postgres store reconciles against a
+  // scoped read, so its `state` reflects only the touched items, not the full
+  // ledger. Don't rely on it across the persistence boundary.
   applyOps(ops: readonly SyncOp[]): Promise<MergeResult>;
   /** A page of items (ascending by id) with derived stock. */
   items(params?: ItemsPageParams): Promise<Page<ItemWithStock>>;

@@ -144,6 +144,23 @@ describe('InventoryClient', () => {
     });
   });
 
+  it('sync returns per-op outcomes', async () => {
+    const { client: c, calls } = client(() =>
+      json(200, { outcomes: [{ id: 'op1', status: 'applied' }] }),
+    );
+    const res = await c.sync([
+      {
+        id: 'op1',
+        kind: 'upsertItem',
+        clientSeq: 0,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        item,
+      },
+    ]);
+    expect(res.outcomes[0]?.status).toBe('applied');
+    expect(calls[0]?.url).toBe('http://example.test/api/sync');
+  });
+
   it('throws a 401 when the key is rejected', async () => {
     const { client: c } = client(() => json(401, { error: 'invalid or missing API key' }));
     await expect(c.listItems()).rejects.toMatchObject({

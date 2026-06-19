@@ -92,7 +92,7 @@ Every route under `/api/*` requires the `x-api-key` header. `/health` does not.
 | `GET /api/items/:id/movements` | One item's ledger in canonical order (paginated) | `200 { movements, nextCursor }`, `404` if unknown |
 | `POST /api/items` | Upsert item metadata (last-write-wins) | `201 { item }`, `409` if superseded, `400` if invalid |
 | `POST /api/movements` | Append a movement | `201` outcome, `422` if rejected, `400` if invalid |
-| `POST /api/sync` | Reconcile a batch of offline ops | `200` merge result, `400` if invalid |
+| `POST /api/sync` | Reconcile a batch of offline ops | `200 { outcomes }` (per-op), `400` if invalid |
 
 Request bodies are validated at the edge with zod; the business invariants (no overdraw, positive `in`/`out`, non-zero `adjust`) are enforced inside the merge.
 

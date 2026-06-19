@@ -1,5 +1,5 @@
 import type { Item, Movement } from '../domain/types';
-import type { MergeResult, OpOutcome, SyncOp } from '../sync/types';
+import type { OpOutcome, SyncOp } from '../sync/types';
 import type { ItemWithStock } from '../server/store';
 
 export interface ClientOptions {
@@ -111,8 +111,11 @@ export class InventoryClient {
     return this.request('/api/movements', { method: 'POST', body: movement }, [201, 422]);
   }
 
-  /** Push a batch of offline ops and receive the reconciled result. */
-  sync(ops: SyncOp[]): Promise<MergeResult> {
+  /**
+   * Push a batch of offline ops and receive the per-op outcomes (the
+   * authoritative result of each). Re-read state via the list endpoints.
+   */
+  sync(ops: SyncOp[]): Promise<{ outcomes: OpOutcome[] }> {
     return this.request('/api/sync', { method: 'POST', body: { ops } }, [200]);
   }
 

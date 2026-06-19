@@ -213,6 +213,50 @@ describe('inventory API', () => {
     expect(res.body.error).toBe('invalid request body');
   });
 
+  it('syncs a batch and returns per-op outcomes only', async () => {
+    const res = await request(app())
+      .post('/api/sync')
+      .set('x-api-key', API_KEY)
+      .send({
+        ops: [
+          {
+            id: 'op1',
+            kind: 'upsertItem',
+            clientSeq: 0,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            item: {
+              id: 'widget',
+              sku: 'w',
+              name: 'W',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+          {
+            id: 'op2',
+            kind: 'addMovement',
+            clientSeq: 1,
+            createdAt: '2026-01-02T00:00:00.000Z',
+            movement: {
+              id: 'm1',
+              itemId: 'widget',
+              type: 'in',
+              quantity: 5,
+              occurredAt: '2026-01-02T00:00:00.000Z',
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    expect(res.body.outcomes).toEqual([
+      { id: 'op1', status: 'applied' },
+      { id: 'op2', status: 'applied' },
+    ]);
+    // Outcomes-only contract: the full ledger is not echoed back.
+    expect(res.body.state).toBeUndefined();
+  });
+
   it('rejects a sync batch whose ops are malformed with 400', async () => {
     const res = await request(app())
       .post('/api/sync')

@@ -160,7 +160,10 @@ export function createApp(options: AppOptions): Express {
     if (!body) return;
     store
       .applyOps(body.ops)
-      .then((result) => res.json(result))
+      // Return per-op outcomes only — the authoritative result. The full ledger
+      // is deliberately not echoed back (it doesn't scale, and the Postgres store
+      // only loads the touched slice); clients re-read via the list endpoints.
+      .then((result) => res.json({ outcomes: result.outcomes }))
       .catch(next);
   });
 
