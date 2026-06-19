@@ -24,7 +24,7 @@ The merge function returns a per-op outcome — `applied`, `superseded`, `duplic
 
 ```bash
 npm install
-npm test          # 44 tests (5 need Postgres and skip without it; see below)
+npm test          # 57 tests (11 need Postgres and skip without it; see below)
 npm run dev       # starts the API on http://localhost:3000 (in-memory store)
 ```
 
@@ -77,6 +77,11 @@ const { items } = await client.listItems();
 console.log(items[0]?.stock); // 100 — derived, never stored
 
 const { movements } = await client.listMovements('bolt'); // the raw ledger
+
+// Or iterate every page transparently — the client follows `nextCursor` for you,
+// which is how you rebuild full state after a sync (which returns outcomes only):
+for await (const item of client.iterateItems()) console.log(item.id, item.stock);
+for await (const m of client.iterateMovements('bolt')) console.log(m.id);
 ```
 
 A malformed body (400), a bad key (401), or an unknown item (404) throw `InventoryApiError`, whose `body` carries the server's error payload (e.g. the zod validation issues).

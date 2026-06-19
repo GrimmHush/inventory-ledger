@@ -94,6 +94,38 @@ export class InventoryClient {
   }
 
   /**
+   * Iterate every item, following `nextCursor` across pages transparently, so a
+   * caller never threads cursors by hand. Since `/api/sync` returns outcomes
+   * only, this is how a client rebuilds full item state after syncing. `limit`
+   * sets the page size requested from the server.
+   */
+  async *iterateItems(params?: { limit?: number }): AsyncGenerator<ItemWithStock> {
+    let cursor: string | undefined;
+    do {
+      const page = await this.listItems({ limit: params?.limit, cursor });
+      yield* page.items;
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+  }
+
+  /**
+   * Iterate one item's ledger in canonical order, following `nextCursor` across
+   * pages. Throws `InventoryApiError` (404) if the item is unknown — the same as
+   * `listMovements`, surfaced on the first page.
+   */
+  async *iterateMovements(
+    itemId: string,
+    params?: { limit?: number },
+  ): AsyncGenerator<Movement> {
+    let cursor: string | undefined;
+    do {
+      const page = await this.listMovements(itemId, { limit: params?.limit, cursor });
+      yield* page.movements;
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+  }
+
+  /**
    * Upsert item metadata. Returns the stored `{ item }` (201) or, if a newer
    * version already existed, the `superseded` outcome (409) — never throws on
    * that conflict, since it is a normal last-write-wins result.

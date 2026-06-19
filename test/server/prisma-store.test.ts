@@ -67,8 +67,8 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
 
     // round-trips through Postgres, including the optional reason
     const fresh = new PrismaLedgerStore(prisma);
-    const reloaded = await fresh.snapshot();
-    expect(reloaded.movements.m1?.reason).toBe('restock');
+    const reloaded = await fresh.itemMovements('widget');
+    expect(reloaded?.data.find((m) => m.id === 'm1')?.reason).toBe('restock');
   });
 
   it('returns an item movements in ledger order, null for unknown items', async () => {

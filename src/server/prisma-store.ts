@@ -276,14 +276,6 @@ export class PrismaLedgerStore implements LedgerStore {
     await this.prisma.$queryRaw`SELECT 1`;
   }
 
-  async snapshot(): Promise<LedgerState> {
-    const [itemRows, movementRows] = await Promise.all([
-      this.prisma.item.findMany(),
-      this.prisma.movement.findMany(),
-    ]);
-    return buildState(itemRows, movementRows);
-  }
-
   /**
    * Read only the slice of the ledger a batch touches: the referenced items, all
    * movements for those items (so overdraw folds the full per-item log), plus any
