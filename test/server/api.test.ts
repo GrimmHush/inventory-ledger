@@ -79,4 +79,40 @@ describe('inventory API', () => {
     expect(res.status).toBe(422);
     expect(res.body.status).toBe('rejected');
   });
+
+  it('returns 400 for a structurally invalid item body', async () => {
+    const res = await request(app())
+      .post('/api/items')
+      .set('x-api-key', API_KEY)
+      .send({ id: 'widget', name: 'Widget' }); // missing sku + timestamps
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid request body');
+    expect(Array.isArray(res.body.issues)).toBe(true);
+  });
+
+  it('returns 400 for a movement with a bad enum / timestamp', async () => {
+    const res = await request(app())
+      .post('/api/movements')
+      .set('x-api-key', API_KEY)
+      .send({
+        id: 'm1',
+        itemId: 'widget',
+        type: 'sideways', // not in | out | adjust
+        quantity: 1.5, // not an integer
+        occurredAt: 'not-a-date',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid request body');
+  });
+
+  it('rejects a sync batch whose ops are malformed with 400', async () => {
+    const res = await request(app())
+      .post('/api/sync')
+      .set('x-api-key', API_KEY)
+      .send({ ops: [{ kind: 'upsertItem' }] }); // missing id, clientSeq, item, ...
+
+    expect(res.status).toBe(400);
+  });
 });

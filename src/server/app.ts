@@ -4,13 +4,34 @@ import express, {
   type Request,
   type Response,
 } from 'express';
-import type { Item, Movement } from '../domain/types';
-import type { SyncOp } from '../sync/types';
+import { z } from 'zod';
 import { InMemoryLedgerStore, type LedgerStore } from './store';
+import { itemSchema, movementSchema, syncBodySchema } from './validation';
 
 export interface AppOptions {
   apiKey: string;
   store?: LedgerStore;
+}
+
+/**
+ * Parses a request body against a schema, replying 400 with the validation
+ * issues on failure. Returns the typed value, or `undefined` if it already
+ * responded — handlers bail when they get `undefined`.
+ */
+function parseBody<S extends z.ZodType>(
+  schema: S,
+  req: Request,
+  res: Response,
+): z.infer<S> | undefined {
+  const result = schema.safeParse(req.body);
+  if (!result.success) {
+    res.status(400).json({
+      error: 'invalid request body',
+      issues: result.error.issues,
+    });
+    return undefined;
+  }
+  return result.data;
 }
 
 /**
@@ -44,8 +65,8 @@ export function createApp(options: AppOptions): Express {
   });
 
   app.post('/api/items', (req, res, next) => {
-    // NOTE: request-body validation (e.g. zod) is a roadmap item; see README.
-    const item = req.body as Item;
+    const item = parseBody(itemSchema, req, res);
+    if (!item) return;
     store
       .upsertItem(item)
       .then((result) => {
@@ -60,8 +81,10 @@ export function createApp(options: AppOptions): Express {
   });
 
   app.post('/api/movements', (req, res, next) => {
+    const movement = parseBody(movementSchema, req, res);
+    if (!movement) return;
     store
-      .addMovement(req.body as Movement)
+      .addMovement(movement)
       .then((result) => {
         const [outcome] = result.outcomes;
         if (outcome?.status === 'rejected') {
@@ -74,9 +97,10 @@ export function createApp(options: AppOptions): Express {
   });
 
   app.post('/api/sync', (req, res, next) => {
-    const body = req.body as { ops?: SyncOp[] };
+    const body = parseBody(syncBodySchema, req, res);
+    if (!body) return;
     store
-      .applyOps(body.ops ?? [])
+      .applyOps(body.ops)
       .then((result) => res.json(result))
       .catch(next);
   });
