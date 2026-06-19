@@ -31,6 +31,8 @@ model Movement {
   
   item       Item     @relation(fields: [itemId], references: [id])
 
-  @@index([itemId])
+  // Backs the ledger keyset queries: filter by itemId, order by (occurredAt, id).
+  // itemId is the leading column, so this also serves plain itemId lookups.
+  @@index([itemId, occurredAt, id])
   @@map("movements")
 }
