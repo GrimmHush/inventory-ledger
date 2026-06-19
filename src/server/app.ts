@@ -69,6 +69,19 @@ export function createApp(options: AppOptions): Express {
       .catch(next);
   });
 
+  app.get('/api/items/:id/movements', (req, res, next) => {
+    store
+      .itemMovements(req.params.id)
+      .then((movements) => {
+        if (movements === null) {
+          res.status(404).json({ error: `unknown item ${req.params.id}` });
+          return;
+        }
+        res.json({ movements });
+      })
+      .catch(next);
+  });
+
   app.post('/api/items', (req, res, next) => {
     const item = parseBody(itemSchema, req, res);
     if (!item) return;

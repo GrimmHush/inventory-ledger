@@ -64,6 +64,23 @@ describe('InventoryClient', () => {
     expect(headers['x-api-key']).toBe('test-key');
   });
 
+  it('lists an item movements and url-encodes the id', async () => {
+    const { client: c, calls } = client(() =>
+      json(200, { movements: [movement] }),
+    );
+    const res = await c.listMovements('a/b');
+    expect(res.movements[0]?.id).toBe('m1');
+    expect(calls[0]?.url).toBe('http://example.test/api/items/a%2Fb/movements');
+  });
+
+  it('throws a 404 when listing movements for an unknown item', async () => {
+    const { client: c } = client(() => json(404, { error: 'unknown item nope' }));
+    await expect(c.listMovements('nope')).rejects.toMatchObject({
+      name: 'InventoryApiError',
+      status: 404,
+    });
+  });
+
   it('returns the stored item when an upsert is applied', async () => {
     const { client: c } = client(() => json(201, { item }));
     const res = await c.upsertItem(item);

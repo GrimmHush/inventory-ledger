@@ -57,6 +57,18 @@ export class InventoryClient {
   }
 
   /**
+   * Fetch one item's movements in ledger order. Throws `InventoryApiError`
+   * (404) if the item is unknown.
+   */
+  listMovements(itemId: string): Promise<{ movements: Movement[] }> {
+    return this.request(
+      `/api/items/${encodeURIComponent(itemId)}/movements`,
+      { method: 'GET' },
+      [200],
+    );
+  }
+
+  /**
    * Upsert item metadata. Returns the stored `{ item }` (201) or, if a newer
    * version already existed, the `superseded` outcome (409) — never throws on
    * that conflict, since it is a normal last-write-wins result.

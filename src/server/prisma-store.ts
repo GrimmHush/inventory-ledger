@@ -118,6 +118,22 @@ export class PrismaLedgerStore implements LedgerStore {
     return itemsWithStock(await this.snapshot());
   }
 
+  async itemMovements(itemId: string): Promise<Movement[] | null> {
+    const item = await this.prisma.item.findUnique({
+      where: { id: itemId },
+      select: { id: true },
+    });
+    if (!item) return null;
+
+    // Ledger order — occurredAt, then id as the tie-breaker — matches
+    // `sortMovements` in the domain, kept deterministic at the query level.
+    const rows = await this.prisma.movement.findMany({
+      where: { itemId },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map(toMovement);
+  }
+
   async ping(): Promise<void> {
     // A trivial round-trip that fails if the connection pool can't reach Postgres.
     await this.prisma.$queryRaw`SELECT 1`;

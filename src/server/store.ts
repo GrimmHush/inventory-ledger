@@ -1,4 +1,4 @@
-import { deriveStockByItem } from '../domain/ledger';
+import { deriveStockByItem, sortMovements } from '../domain/ledger';
 import type { Item, Movement } from '../domain/types';
 import { emptyState, merge } from '../sync/merge';
 import type { LedgerState, MergeResult, SyncOp } from '../sync/types';
@@ -18,6 +18,8 @@ export interface LedgerStore {
   addMovement(movement: Movement): Promise<MergeResult>;
   applyOps(ops: readonly SyncOp[]): Promise<MergeResult>;
   items(): Promise<ItemWithStock[]>;
+  /** One item's movements in ledger order, or `null` if the item is unknown. */
+  itemMovements(itemId: string): Promise<Movement[] | null>;
   snapshot(): Promise<LedgerState>;
   /** Resolves if the backing store is reachable; rejects otherwise. Drives `/health`. */
   ping(): Promise<void>;
@@ -79,6 +81,14 @@ export class InMemoryLedgerStore implements LedgerStore {
 
   items(): Promise<ItemWithStock[]> {
     return Promise.resolve(itemsWithStock(this.state));
+  }
+
+  itemMovements(itemId: string): Promise<Movement[] | null> {
+    if (!this.state.items[itemId]) return Promise.resolve(null);
+    const movements = Object.values(this.state.movements).filter(
+      (m) => m.itemId === itemId,
+    );
+    return Promise.resolve(sortMovements(movements));
   }
 
   snapshot(): Promise<LedgerState> {

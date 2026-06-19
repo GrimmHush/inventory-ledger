@@ -17,6 +17,7 @@ function failingStore(): LedgerStore {
     addMovement: boom,
     applyOps: boom,
     items: boom,
+    itemMovements: boom,
     snapshot: boom,
     ping: boom,
   };
@@ -71,6 +72,45 @@ describe('inventory API', () => {
     const list = await request(server).get('/api/items').set('x-api-key', API_KEY).expect(200);
     expect(list.body.items).toHaveLength(1);
     expect(list.body.items[0].stock).toBe(12);
+  });
+
+  it('lists an item movements in ledger order', async () => {
+    const server = app();
+    await request(server)
+      .post('/api/items')
+      .set('x-api-key', API_KEY)
+      .send({
+        id: 'widget',
+        sku: 'widget-1',
+        name: 'Widget',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      });
+
+    // Posted out of order; the response must come back in ledger order.
+    for (const m of [
+      { id: 'm2', occurredAt: '2026-01-03T00:00:00.000Z', quantity: 4 },
+      { id: 'm1', occurredAt: '2026-01-02T00:00:00.000Z', quantity: 10 },
+    ]) {
+      await request(server)
+        .post('/api/movements')
+        .set('x-api-key', API_KEY)
+        .send({ id: m.id, itemId: 'widget', type: 'in', quantity: m.quantity, occurredAt: m.occurredAt });
+    }
+
+    const res = await request(server)
+      .get('/api/items/widget/movements')
+      .set('x-api-key', API_KEY)
+      .expect(200);
+    expect(res.body.movements.map((m: { id: string }) => m.id)).toEqual(['m1', 'm2']);
+  });
+
+  it('returns 404 listing movements for an unknown item', async () => {
+    const res = await request(app())
+      .get('/api/items/nope/movements')
+      .set('x-api-key', API_KEY);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toContain('nope');
   });
 
   it('returns 422 when a movement would overdraw', async () => {

@@ -71,6 +71,20 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
     expect(reloaded.movements.m1?.reason).toBe('restock');
   });
 
+  it('returns an item movements in ledger order, null for unknown items', async () => {
+    await store.upsertItem(item({ id: 'widget' }));
+    await store.addMovement(
+      move({ id: 'm2', type: 'in', quantity: 4, occurredAt: '2026-01-03T00:00:00.000Z' }),
+    );
+    await store.addMovement(
+      move({ id: 'm1', type: 'in', quantity: 10, occurredAt: '2026-01-02T00:00:00.000Z' }),
+    );
+
+    const movements = await store.itemMovements('widget');
+    expect(movements?.map((m) => m.id)).toEqual(['m1', 'm2']);
+    expect(await store.itemMovements('nope')).toBeNull();
+  });
+
   it('rejects an overdraw at merge time and does not persist it', async () => {
     await store.upsertItem(item({ id: 'widget' }));
     await store.addMovement(move({ id: 'm1', type: 'in', quantity: 12 }));
