@@ -34,7 +34,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx prisma db push
+      - run: npx prisma migrate deploy
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test

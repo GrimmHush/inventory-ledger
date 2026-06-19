@@ -24,10 +24,11 @@ CI (`.github/workflows/ci.yml`) runs typecheck, lint, test, and build on every p
 ### Database (optional, for the Postgres-backed store)
 
 - `docker compose up -d` — start the local Postgres (see `docker-compose.yml`)
-- `npx prisma db push` — sync `prisma/schema.prisma` to the database
-- `npx prisma generate` — regenerate the Prisma client after a schema change
+- `npx prisma migrate dev --name <name>` — create + apply a migration after editing `prisma/schema.prisma` (also regenerates the client)
+- `npx prisma migrate deploy` — apply pending migrations without generating one (used in CI and for deploys)
+- `npx prisma generate` — regenerate the Prisma client on its own
 
-The Prisma **CLI** reads its connection URL from `prisma.config.ts` (which loads `.env` via `dotenv`); the **runtime** client does not — `src/server/prisma.ts` supplies it through the `@prisma/adapter-pg` driver adapter (Prisma 7 requirement). The Postgres integration suite (`test/server/prisma-store.test.ts`) is gated on `DATABASE_URL`: it runs locally when the database is up and is skipped in CI. After changing the schema, run `db push` + `generate` before the tests.
+Schema changes are tracked as versioned migrations in `prisma/migrations` (not `db push`); `migrate deploy` is what provisions the schema in CI and would in production. `npm ci` runs `prisma generate` via a `postinstall` hook, so a fresh checkout always has a working client. The Prisma **CLI** reads its connection URL from `prisma.config.ts` (which loads `.env` via `dotenv`, then `process.env.DATABASE_URL`); the **runtime** client does not — `src/server/prisma.ts` supplies it through the `@prisma/adapter-pg` driver adapter (Prisma 7 requirement). The Postgres integration suite (`test/server/prisma-store.test.ts`) is gated on `DATABASE_URL`: it runs locally when the database is up, in CI against the service container, and is skipped when neither is present.
 
 Server env vars (see `.env.example`): `PORT` (default 3000), `API_KEY` (default `dev-key`), `DATABASE_URL` (when set, the server uses the Postgres-backed store; otherwise it falls back to in-memory).
 
