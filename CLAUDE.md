@@ -41,7 +41,7 @@ Layers, in dependency order (lower layers are pure and know nothing of HTTP):
 - `src/domain` — `Item`/`Movement` types, stock derivation, the non-negative-stock invariant. Pure functions, no I/O.
 - `src/sync` — the offline reconciliation `merge`. Pure, deterministic. The heart of the project.
 - `src/server` — Express API with API-key auth + the stateful `LedgerStore` (an interface with in-memory and Postgres implementations).
-- `src/sdk` — typed client whose return types flow from the same domain model.
+- `src/sdk` — typed client whose return types flow from the same domain model. It distinguishes **business outcomes from failures**: a superseded upsert (409) or rejected movement (422) come back as typed *values* (callers branch on them), while a malformed body (400, with the zod issues on `InventoryApiError.body`), bad key (401), or server error throw.
 
 ### The two reconciliation rules (the whole point)
 

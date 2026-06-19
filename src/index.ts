@@ -3,5 +3,9 @@
 export * from './domain';
 export * from './sync';
 export { InventoryClient, InventoryApiError } from './sdk/client';
-export type { ClientOptions } from './sdk/client';
+export type {
+  ClientOptions,
+  UpsertItemResult,
+  SupersededOutcome,
+} from './sdk/client';
 export type { ItemWithStock } from './server/store';
