@@ -1,10 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
+import { deriveStockByItem } from '../domain/ledger';
 import type { Item, Movement, MovementType } from '../domain/types';
 import { merge } from '../sync/merge';
 import type { LedgerState, MergeResult, SyncOp } from '../sync/types';
 import {
   addMovementOp,
-  itemsWithStock,
   upsertItemOp,
   type ItemWithStock,
   type LedgerStore,
@@ -16,6 +16,7 @@ type ItemRow = {
   name: string;
   createdAt: Date;
   updatedAt: Date;
+  stock: number;
 };
 
 type MovementRow = {
@@ -92,11 +93,17 @@ function backoff(attempt: number): Promise<void> {
 
 /**
  * A Postgres-backed store, drop-in for `InMemoryLedgerStore`. It reuses the same
- * pure `merge`: load the full ledger, fold the ops in memory, then persist only
- * the ops merge accepted. The read, the merge, and the writes all run inside one
- * Serializable transaction, so the overdraw decision can never be made on stale
- * data — a concurrent writer forces a serialization failure and a retry. Stock
- * is still never stored; it is derived from the movement log as in-memory.
+ * pure `merge`: load the ledger for the items a batch touches, fold the ops, then
+ * persist only what merge accepted. The read, the merge, and the writes all run
+ * inside one Serializable transaction, so the overdraw decision can never be made
+ * on stale data — a concurrent writer forces a serialization failure and a retry.
+ *
+ * The read is *scoped to the touched items*, not the whole database, so a write
+ * is O(those items' history) rather than O(entire ledger) — and the transaction's
+ * read set only covers those items, so writes to unrelated items don't conflict.
+ * A denormalized `stock` column, refreshed in the same transaction, lets `items()`
+ * list stock without folding the log. Stock is still *derived* from movements
+ * (the log is the source of truth); the column is a checkpoint of that fold.
  */
 export class PrismaLedgerStore implements LedgerStore {
   constructor(private readonly prisma: PrismaClient) {}
@@ -134,12 +141,16 @@ export class PrismaLedgerStore implements LedgerStore {
     }
   }
 
-  /** The read → merge → write core, run inside a transaction so the read is locked. */
+  /**
+   * The read → merge → write core, run inside a transaction so the read is
+   * locked. The returned `MergeResult.state` reflects only the touched items
+   * (the read is scoped); the per-op `outcomes` are the authoritative result.
+   */
   private async reconcile(
     tx: Prisma.TransactionClient,
     ops: readonly SyncOp[],
   ): Promise<MergeResult> {
-    const base = await this.loadState(tx);
+    const base = await this.loadScopedState(tx, ops);
     const result = merge(base, ops);
 
     const applied = new Set(
@@ -148,43 +159,59 @@ export class PrismaLedgerStore implements LedgerStore {
         .map((outcome) => outcome.id),
     );
 
+    // Item upserts first, so a movement's foreign-key parent exists before it.
     for (const op of ops) {
-      if (!applied.has(op.id)) continue;
-      if (op.kind === 'upsertItem') {
-        await tx.item.upsert({
-          where: { id: op.item.id },
-          create: {
-            id: op.item.id,
-            sku: op.item.sku,
-            name: op.item.name,
-            createdAt: new Date(op.item.createdAt),
-            updatedAt: new Date(op.item.updatedAt),
-          },
-          update: {
-            sku: op.item.sku,
-            name: op.item.name,
-            updatedAt: new Date(op.item.updatedAt),
-          },
-        });
-      } else {
-        await tx.movement.create({
-          data: {
-            id: op.movement.id,
-            itemId: op.movement.itemId,
-            type: op.movement.type,
-            quantity: op.movement.quantity,
-            reason: op.movement.reason ?? null,
-            occurredAt: new Date(op.movement.occurredAt),
-          },
-        });
-      }
+      if (op.kind !== 'upsertItem' || !applied.has(op.id)) continue;
+      await tx.item.upsert({
+        where: { id: op.item.id },
+        create: {
+          id: op.item.id,
+          sku: op.item.sku,
+          name: op.item.name,
+          createdAt: new Date(op.item.createdAt),
+          updatedAt: new Date(op.item.updatedAt),
+        },
+        update: {
+          sku: op.item.sku,
+          name: op.item.name,
+          updatedAt: new Date(op.item.updatedAt),
+        },
+      });
+    }
+
+    const restock = new Set<string>();
+    for (const op of ops) {
+      if (op.kind !== 'addMovement' || !applied.has(op.id)) continue;
+      await tx.movement.create({
+        data: {
+          id: op.movement.id,
+          itemId: op.movement.itemId,
+          type: op.movement.type,
+          quantity: op.movement.quantity,
+          reason: op.movement.reason ?? null,
+          occurredAt: new Date(op.movement.occurredAt),
+        },
+      });
+      restock.add(op.movement.itemId);
+    }
+
+    // Refresh the stock checkpoint for each item whose log changed, derived from
+    // the now-complete per-item movements in the merged state.
+    const stockByItem = deriveStockByItem(Object.values(result.state.movements));
+    for (const itemId of restock) {
+      await tx.item.update({
+        where: { id: itemId },
+        data: { stock: stockByItem[itemId] ?? 0 },
+      });
     }
 
     return result;
   }
 
   async items(): Promise<ItemWithStock[]> {
-    return itemsWithStock(await this.snapshot());
+    // Reads the stock checkpoint directly — no movement fold.
+    const rows = await this.prisma.item.findMany();
+    return rows.map((row) => ({ ...toItem(row), stock: row.stock }));
   }
 
   async itemMovements(itemId: string): Promise<Movement[] | null> {
@@ -208,33 +235,66 @@ export class PrismaLedgerStore implements LedgerStore {
     await this.prisma.$queryRaw`SELECT 1`;
   }
 
-  snapshot(): Promise<LedgerState> {
-    return this.loadState(this.prisma);
+  async snapshot(): Promise<LedgerState> {
+    const [itemRows, movementRows] = await Promise.all([
+      this.prisma.item.findMany(),
+      this.prisma.movement.findMany(),
+    ]);
+    return buildState(itemRows, movementRows);
   }
 
   /**
-   * Read the full ledger via the given client. Accepts either the base client
-   * (for `snapshot`) or a transaction client (for `reconcile`), so the
-   * concurrency-safe read and the plain read share one mapping.
+   * Read only the slice of the ledger a batch touches: the referenced items, all
+   * movements for those items (so overdraw folds the full per-item log), plus any
+   * movement whose id is in the batch (so a replay is still detected as a
+   * duplicate even if its item isn't otherwise touched). This is what merge needs
+   * and nothing more, so the transaction's read set — and conflict footprint —
+   * stays tight.
    */
-  private async loadState(client: Prisma.TransactionClient): Promise<LedgerState> {
-    const [itemRows, movementRows] = await Promise.all([
-      client.item.findMany(),
-      client.movement.findMany(),
+  private async loadScopedState(
+    client: Prisma.TransactionClient,
+    ops: readonly SyncOp[],
+  ): Promise<LedgerState> {
+    const itemIds = new Set<string>();
+    const movementIds = new Set<string>();
+    for (const op of ops) {
+      if (op.kind === 'upsertItem') {
+        itemIds.add(op.item.id);
+      } else {
+        itemIds.add(op.movement.itemId);
+        movementIds.add(op.movement.id);
+      }
+    }
+    if (itemIds.size === 0) return { items: {}, movements: {} };
+
+    const [itemRows, byItem, byId] = await Promise.all([
+      client.item.findMany({ where: { id: { in: [...itemIds] } } }),
+      client.movement.findMany({ where: { itemId: { in: [...itemIds] } } }),
+      movementIds.size > 0
+        ? client.movement.findMany({ where: { id: { in: [...movementIds] } } })
+        : Promise.resolve([] as MovementRow[]),
     ]);
 
-    const items: Record<string, Item> = {};
-    for (const row of itemRows) {
-      const item = toItem(row);
-      items[item.id] = item;
-    }
-
-    const movements: Record<string, Movement> = {};
-    for (const row of movementRows) {
-      const movement = toMovement(row);
-      movements[movement.id] = movement;
-    }
-
-    return { items, movements };
+    // Keyed by id when built, so the byItem/byId overlap dedupes naturally.
+    return buildState(itemRows, [...byItem, ...byId]);
   }
+}
+
+function buildState(
+  itemRows: ItemRow[],
+  movementRows: MovementRow[],
+): LedgerState {
+  const items: Record<string, Item> = {};
+  for (const row of itemRows) {
+    const item = toItem(row);
+    items[item.id] = item;
+  }
+
+  const movements: Record<string, Movement> = {};
+  for (const row of movementRows) {
+    const movement = toMovement(row);
+    movements[movement.id] = movement;
+  }
+
+  return { items, movements };
 }

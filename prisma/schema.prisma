@@ -12,6 +12,10 @@ model Item {
   name      String
   createdAt DateTime
   updatedAt DateTime
+  // Denormalized stock cache, maintained transactionally on every write so that
+  // listing items doesn't fold the whole movement log. Stock is still *derived*
+  // from movements (the log is the source of truth); this column is the checkpoint.
+  stock     Int        @default(0)
   movements Movement[]
 
   @@map("items")

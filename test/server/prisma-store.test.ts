@@ -85,6 +85,46 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
     expect(await store.itemMovements('nope')).toBeNull();
   });
 
+  it('keeps the stock checkpoint consistent with the movement log', async () => {
+    await store.upsertItem(item({ id: 'widget' }));
+    await store.addMovement(
+      move({ id: 'm1', type: 'in', quantity: 10, occurredAt: '2026-01-02T00:00:00.000Z' }),
+    );
+    await store.addMovement(
+      move({ id: 'm2', type: 'out', quantity: 4, occurredAt: '2026-01-03T00:00:00.000Z' }),
+    );
+    await store.addMovement(
+      move({ id: 'm3', type: 'adjust', quantity: -1, occurredAt: '2026-01-04T00:00:00.000Z' }),
+    );
+
+    const items = await store.items();
+    expect(items[0]?.stock).toBe(5); // 10 - 4 - 1
+
+    // The cached column equals folding the log, and items() reads it directly.
+    const row = await prisma.item.findUniqueOrThrow({ where: { id: 'widget' } });
+    expect(row.stock).toBe(5);
+  });
+
+  it('still rejects a backdated movement that dips an intermediate prefix negative', async () => {
+    await store.upsertItem(item({ id: 'widget' }));
+    await store.addMovement(
+      move({ id: 'in', type: 'in', quantity: 5, occurredAt: '2026-02-01T00:00:00.000Z' }),
+    );
+
+    // A withdrawal of 3 backdated *before* the only deposit: at that instant
+    // stock would be -3, even though the final total (5 - 3 = 2) is fine. The
+    // per-prefix invariant must reject it — a final-stock-only checkpoint would
+    // wrongly accept. This proves the scoped read still folds the full per-item
+    // log, not just a cached total.
+    const res = await store.addMovement(
+      move({ id: 'back', type: 'out', quantity: 3, occurredAt: '2026-01-01T00:00:00.000Z' }),
+    );
+    expect(res.outcomes[0]?.status).toBe('rejected');
+
+    const items = await store.items();
+    expect(items[0]?.stock).toBe(5); // unchanged; the backdated out was not applied
+  });
+
   it('rejects an overdraw at merge time and does not persist it', async () => {
     await store.upsertItem(item({ id: 'widget' }));
     await store.addMovement(move({ id: 'm1', type: 'in', quantity: 12 }));

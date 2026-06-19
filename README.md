@@ -107,7 +107,7 @@ The codebase is layered so the interesting logic is pure and the I/O is thin:
 | Server | `src/server` | An Express API with API-key auth, zod validation, and a pluggable `LedgerStore`. |
 | SDK | `src/sdk` | A typed client whose return types flow from the same domain model. |
 
-The persistence boundary is deliberate: domain and sync logic are pure functions, and the only stateful piece is the `LedgerStore` interface in `src/server/store.ts`. It has two implementations behind the same contract — `InMemoryLedgerStore` (the default) and `PrismaLedgerStore` (Postgres, via Prisma + `@prisma/adapter-pg`) — selected at startup by `DATABASE_URL`. Both reuse the same pure `merge`; the Postgres store loads the ledger, folds the ops in memory, and persists only what merge accepts inside one transaction. Adding SQLite or Mongo means a new class implementing the interface and nothing else.
+The persistence boundary is deliberate: domain and sync logic are pure functions, and the only stateful piece is the `LedgerStore` interface in `src/server/store.ts`. It has two implementations behind the same contract — `InMemoryLedgerStore` (the default) and `PrismaLedgerStore` (Postgres, via Prisma + `@prisma/adapter-pg`) — selected at startup by `DATABASE_URL`. Both reuse the same pure `merge`. The Postgres store does the read, merge, and writes inside one `Serializable` transaction (retried on conflict) so concurrent withdrawals can't both pass the overdraw check; it scopes the read to the items a batch touches; and it keeps a denormalized `stock` checkpoint column — refreshed transactionally, derived from the log — so listing stock doesn't fold the whole history. Adding SQLite or Mongo means a new class implementing the interface and nothing else.
 
 ## Scripts
 
