@@ -98,6 +98,32 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
     expect(count).toBe(1);
   });
 
+  it('serializes concurrent overdrawing writes: one wins, one is rejected', async () => {
+    await store.upsertItem(item({ id: 'widget' }));
+    await store.addMovement(move({ id: 'in', type: 'in', quantity: 5 }));
+
+    // Two withdrawals of the full stock fired at once. Each is valid against a
+    // stock of 5 read in isolation, so a naive read-outside-the-transaction
+    // store would commit both and drive stock to -5.
+    const [a, b] = await Promise.all([
+      store.addMovement(
+        move({ id: 'outA', type: 'out', quantity: 5, occurredAt: '2026-01-03T00:00:00.000Z' }),
+      ),
+      store.addMovement(
+        move({ id: 'outB', type: 'out', quantity: 5, occurredAt: '2026-01-04T00:00:00.000Z' }),
+      ),
+    ]);
+
+    const statuses = [a.outcomes[0]?.status, b.outcomes[0]?.status].sort();
+    expect(statuses).toEqual(['applied', 'rejected']);
+
+    // The invariant held at the database: exactly one withdrawal persisted and
+    // stock never went negative.
+    const items = await store.items();
+    expect(items[0]?.stock).toBe(0);
+    expect(await prisma.movement.count()).toBe(2);
+  });
+
   it('treats a replayed movement id as an idempotent duplicate', async () => {
     await store.upsertItem(item({ id: 'widget' }));
     await store.addMovement(move({ id: 'm1', type: 'in', quantity: 12 }));

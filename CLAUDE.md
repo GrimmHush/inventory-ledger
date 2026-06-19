@@ -61,7 +61,7 @@ Ordering is deliberate and must stay deterministic: ops sort by `createdAt`, the
 Two implementations satisfy the interface, both reusing the same pure `merge`:
 
 - `InMemoryLedgerStore` (`src/server/store.ts`) — the default, used by tests and when no `DATABASE_URL` is set.
-- `PrismaLedgerStore` (`src/server/prisma-store.ts`) — loads the full ledger from Postgres, folds the ops with `merge` in memory, then persists only the accepted ops inside one `$transaction` so a batch lands atomically. Stock is still never stored; it is derived from the movement log exactly as in-memory.
+- `PrismaLedgerStore` (`src/server/prisma-store.ts`) — loads the full ledger from Postgres, folds the ops with `merge`, then persists only the accepted ops. The load, the merge, and the writes **all run inside one `Serializable` transaction**, retried on a serialization conflict. This is load-bearing, not incidental: reading the ledger *outside* the write transaction reintroduces a time-of-check/time-of-use race where two concurrent withdrawals each read the same stock, each pass the overdraw check, and both commit — defeating merge-time integrity. Keep the read inside the transaction. Stock is still never stored; it is derived from the movement log exactly as in-memory.
 
 `src/server/main.ts` selects the implementation by `DATABASE_URL`. Adding another backend (SQLite/Mongo) means a new class implementing `LedgerStore` and nothing in the domain or sync layers — keep those pure to preserve that.
 
