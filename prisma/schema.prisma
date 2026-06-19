@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Item {
+  id        String     @id
+  sku       String     @unique
+  name      String
+  createdAt DateTime
+  updatedAt DateTime
+  movements Movement[]
+
+  @@map("items")
+}
+
+model Movement {
+  id         String   @id
+  itemId     String
+  type       String   // 'in', 'out', or 'adjust'
+  quantity   Int
+  occurredAt DateTime
+  
+  item       Item     @relation(fields: [itemId], references: [id])
+
+  @@index([itemId])
+  @@map("movements")
+}
