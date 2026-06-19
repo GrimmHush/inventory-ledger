@@ -118,6 +118,11 @@ export class PrismaLedgerStore implements LedgerStore {
     return itemsWithStock(await this.snapshot());
   }
 
+  async ping(): Promise<void> {
+    // A trivial round-trip that fails if the connection pool can't reach Postgres.
+    await this.prisma.$queryRaw`SELECT 1`;
+  }
+
   async snapshot(): Promise<LedgerState> {
     const [itemRows, movementRows] = await Promise.all([
       this.prisma.item.findMany(),

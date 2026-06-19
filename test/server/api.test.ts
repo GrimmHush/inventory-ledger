@@ -18,14 +18,22 @@ function failingStore(): LedgerStore {
     applyOps: boom,
     items: boom,
     snapshot: boom,
+    ping: boom,
   };
 }
 
 describe('inventory API', () => {
-  it('serves health without a key', async () => {
+  it('serves health without a key when the store is reachable', async () => {
     const res = await request(app()).get('/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
+  });
+
+  it('reports 503 from health when the store is unreachable', async () => {
+    const server = createApp({ apiKey: API_KEY, store: failingStore() });
+    const res = await request(server).get('/health');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ ok: false, error: 'store unavailable' });
   });
 
   it('rejects API calls without a valid key', async () => {

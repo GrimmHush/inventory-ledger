@@ -44,9 +44,14 @@ export function createApp(options: AppOptions): Express {
 
   app.use(express.json());
 
-  // Health check sits before auth so probes don't need a key.
+  // Health check sits before auth so probes don't need a key. It pings the
+  // backing store (a DB round-trip for Postgres) and reports 503 when the store
+  // is unreachable, so a readiness probe fails while the database is down.
   app.get('/health', (_req, res) => {
-    res.json({ ok: true });
+    store
+      .ping()
+      .then(() => res.json({ ok: true }))
+      .catch(() => res.status(503).json({ ok: false, error: 'store unavailable' }));
   });
 
   app.use((req: Request, res: Response, next: NextFunction) => {

@@ -19,6 +19,8 @@ export interface LedgerStore {
   applyOps(ops: readonly SyncOp[]): Promise<MergeResult>;
   items(): Promise<ItemWithStock[]>;
   snapshot(): Promise<LedgerState>;
+  /** Resolves if the backing store is reachable; rejects otherwise. Drives `/health`. */
+  ping(): Promise<void>;
 }
 
 /** Turns a single item upsert into a one-op sync batch. */
@@ -81,5 +83,9 @@ export class InMemoryLedgerStore implements LedgerStore {
 
   snapshot(): Promise<LedgerState> {
     return Promise.resolve(this.state);
+  }
+
+  ping(): Promise<void> {
+    return Promise.resolve();
   }
 }

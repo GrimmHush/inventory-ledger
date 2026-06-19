@@ -50,6 +50,10 @@ describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
     await prisma.item.deleteMany();
   });
 
+  it('ping resolves against a reachable database', async () => {
+    await expect(store.ping()).resolves.toBeUndefined();
+  });
+
   it('persists an item and a movement, then derives stock', async () => {
     await store.upsertItem(item({ id: 'widget' }));
     const applied = await store.addMovement(
