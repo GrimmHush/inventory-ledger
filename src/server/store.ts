@@ -8,44 +8,78 @@ export interface ItemWithStock extends Item {
 }
 
 /**
- * A simple in-memory store. The domain and sync logic it calls are pure, so
- * swapping this for a real database (Postgres, Mongo, SQLite) touches only this
- * file — that persistence boundary is deliberate. See the roadmap in the README.
+ * The persistence boundary. Every write funnels through `applyOps` → the pure
+ * `merge`, so single-item HTTP writes and the sync endpoint share one code path.
+ * The contract is async so a real database (see `PrismaLedgerStore`) can satisfy
+ * it without leaking I/O into the domain or sync layers, which stay pure.
  */
-export class LedgerStore {
+export interface LedgerStore {
+  upsertItem(item: Item): Promise<MergeResult>;
+  addMovement(movement: Movement): Promise<MergeResult>;
+  applyOps(ops: readonly SyncOp[]): Promise<MergeResult>;
+  items(): Promise<ItemWithStock[]>;
+  snapshot(): Promise<LedgerState>;
+}
+
+/** Turns a single item upsert into a one-op sync batch. */
+export function upsertItemOp(item: Item): SyncOp {
+  return {
+    id: item.id,
+    kind: 'upsertItem',
+    clientSeq: 0,
+    createdAt: item.updatedAt,
+    item,
+  };
+}
+
+/** Turns a single movement into a one-op sync batch. */
+export function addMovementOp(movement: Movement): SyncOp {
+  return {
+    id: movement.id,
+    kind: 'addMovement',
+    clientSeq: 0,
+    createdAt: movement.occurredAt,
+    movement,
+  };
+}
+
+/** Derives current stock for every known item, including those with no movements. */
+export function itemsWithStock(state: LedgerState): ItemWithStock[] {
+  const stock = deriveStockByItem(Object.values(state.movements));
+  return Object.values(state.items).map((item) => ({
+    ...item,
+    stock: stock[item.id] ?? 0,
+  }));
+}
+
+/**
+ * An in-memory store, used by tests and as the default when no database is
+ * configured. The domain and sync logic it calls are pure, so a Postgres-backed
+ * store (`PrismaLedgerStore`) implements the same interface against the same
+ * `merge`. See the persistence boundary in CLAUDE.md.
+ */
+export class InMemoryLedgerStore implements LedgerStore {
   private state: LedgerState = emptyState();
 
-  upsertItem(item: Item): void {
-    this.state.items[item.id] = item;
+  upsertItem(item: Item): Promise<MergeResult> {
+    return this.applyOps([upsertItemOp(item)]);
   }
 
-  addMovement(movement: Movement): MergeResult {
-    return this.applyOps([
-      {
-        id: movement.id,
-        kind: 'addMovement',
-        clientSeq: 0,
-        createdAt: movement.occurredAt,
-        movement,
-      },
-    ]);
+  addMovement(movement: Movement): Promise<MergeResult> {
+    return this.applyOps([addMovementOp(movement)]);
   }
 
-  applyOps(ops: readonly SyncOp[]): MergeResult {
+  applyOps(ops: readonly SyncOp[]): Promise<MergeResult> {
     const result = merge(this.state, ops);
     this.state = result.state;
-    return result;
+    return Promise.resolve(result);
   }
 
-  items(): ItemWithStock[] {
-    const stock = deriveStockByItem(Object.values(this.state.movements));
-    return Object.values(this.state.items).map((item) => ({
-      ...item,
-      stock: stock[item.id] ?? 0,
-    }));
+  items(): Promise<ItemWithStock[]> {
+    return Promise.resolve(itemsWithStock(this.state));
   }
 
-  snapshot(): LedgerState {
-    return this.state;
+  snapshot(): Promise<LedgerState> {
+    return Promise.resolve(this.state);
   }
 }

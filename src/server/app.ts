@@ -6,7 +6,7 @@ import express, {
 } from 'express';
 import type { Item, Movement } from '../domain/types';
 import type { SyncOp } from '../sync/types';
-import { LedgerStore } from './store';
+import { InMemoryLedgerStore, type LedgerStore } from './store';
 
 export interface AppOptions {
   apiKey: string;
@@ -19,7 +19,7 @@ export interface AppOptions {
  */
 export function createApp(options: AppOptions): Express {
   const app = express();
-  const store = options.store ?? new LedgerStore();
+  const store = options.store ?? new InMemoryLedgerStore();
 
   app.use(express.json());
 
@@ -36,31 +36,49 @@ export function createApp(options: AppOptions): Express {
     next();
   });
 
-  app.get('/api/items', (_req, res) => {
-    res.json({ items: store.items() });
+  app.get('/api/items', (_req, res, next) => {
+    store
+      .items()
+      .then((items) => res.json({ items }))
+      .catch(next);
   });
 
-  app.post('/api/items', (req, res) => {
+  app.post('/api/items', (req, res, next) => {
     // NOTE: request-body validation (e.g. zod) is a roadmap item; see README.
     const item = req.body as Item;
-    store.upsertItem(item);
-    res.status(201).json({ item });
+    store
+      .upsertItem(item)
+      .then((result) => {
+        const [outcome] = result.outcomes;
+        if (outcome?.status === 'superseded') {
+          res.status(409).json(outcome);
+          return;
+        }
+        res.status(201).json({ item });
+      })
+      .catch(next);
   });
 
-  app.post('/api/movements', (req, res) => {
-    const result = store.addMovement(req.body as Movement);
-    const [outcome] = result.outcomes;
-    if (outcome?.status === 'rejected') {
-      res.status(422).json(outcome);
-      return;
-    }
-    res.status(201).json(outcome);
+  app.post('/api/movements', (req, res, next) => {
+    store
+      .addMovement(req.body as Movement)
+      .then((result) => {
+        const [outcome] = result.outcomes;
+        if (outcome?.status === 'rejected') {
+          res.status(422).json(outcome);
+          return;
+        }
+        res.status(201).json(outcome);
+      })
+      .catch(next);
   });
 
-  app.post('/api/sync', (req, res) => {
+  app.post('/api/sync', (req, res, next) => {
     const body = req.body as { ops?: SyncOp[] };
-    const result = store.applyOps(body.ops ?? []);
-    res.json(result);
+    store
+      .applyOps(body.ops ?? [])
+      .then((result) => res.json(result))
+      .catch(next);
   });
 
   return app;

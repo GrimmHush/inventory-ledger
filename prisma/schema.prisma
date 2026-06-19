@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Item {
@@ -23,6 +22,7 @@ model Movement {
   itemId     String
   type       String   // 'in', 'out', or 'adjust'
   quantity   Int
+  reason     String?
   occurredAt DateTime
   
   item       Item     @relation(fields: [itemId], references: [id])

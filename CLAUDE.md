@@ -21,7 +21,15 @@ npx vitest run -t "rejects an overdraw"        # by test name
 
 CI (`.github/workflows/ci.yml`) runs typecheck, lint, test, and build on every push and PR. Run all four locally before considering work done.
 
-Server env vars (see `.env.example`): `PORT` (default 3000), `API_KEY` (default `dev-key`).
+### Database (optional, for the Postgres-backed store)
+
+- `docker compose up -d` — start the local Postgres (see `docker-compose.yml`)
+- `npx prisma db push` — sync `prisma/schema.prisma` to the database
+- `npx prisma generate` — regenerate the Prisma client after a schema change
+
+The Prisma **CLI** reads its connection URL from `prisma.config.ts` (which loads `.env` via `dotenv`); the **runtime** client does not — `src/server/prisma.ts` supplies it through the `@prisma/adapter-pg` driver adapter (Prisma 7 requirement). The Postgres integration suite (`test/server/prisma-store.test.ts`) is gated on `DATABASE_URL`: it runs locally when the database is up and is skipped in CI. After changing the schema, run `db push` + `generate` before the tests.
+
+Server env vars (see `.env.example`): `PORT` (default 3000), `API_KEY` (default `dev-key`), `DATABASE_URL` (when set, the server uses the Postgres-backed store; otherwise it falls back to in-memory).
 
 ## Architecture
 
@@ -31,7 +39,7 @@ Layers, in dependency order (lower layers are pure and know nothing of HTTP):
 
 - `src/domain` — `Item`/`Movement` types, stock derivation, the non-negative-stock invariant. Pure functions, no I/O.
 - `src/sync` — the offline reconciliation `merge`. Pure, deterministic. The heart of the project.
-- `src/server` — Express API with API-key auth + the only stateful piece, `LedgerStore`.
+- `src/server` — Express API with API-key auth + the stateful `LedgerStore` (an interface with in-memory and Postgres implementations).
 - `src/sdk` — typed client whose return types flow from the same domain model.
 
 ### The two reconciliation rules (the whole point)
@@ -47,7 +55,14 @@ Ordering is deliberate and must stay deterministic: ops sort by `createdAt`, the
 
 ### Persistence boundary
 
-`LedgerStore` (`src/server/store.ts`) is the only mutable state and the only place that holds a `LedgerState`. Single-item HTTP writes funnel through `applyOps` → `merge`, so the API and the sync endpoint share one code path. Swapping the in-memory store for Postgres/SQLite/Mongo should touch this one file and nothing else — keep domain and sync logic pure to preserve that.
+`LedgerStore` (`src/server/store.ts`) is an **async interface** — the only place that holds a `LedgerState`. **Every** write, including single-item HTTP writes (`upsertItem` / `addMovement`), funnels through `applyOps` → the pure `merge`, so the API and the sync endpoint share one code path and an item upsert is subject to the same last-write-wins check as a synced one (a stale edit returns HTTP 409).
+
+Two implementations satisfy the interface, both reusing the same pure `merge`:
+
+- `InMemoryLedgerStore` (`src/server/store.ts`) — the default, used by tests and when no `DATABASE_URL` is set.
+- `PrismaLedgerStore` (`src/server/prisma-store.ts`) — loads the full ledger from Postgres, folds the ops with `merge` in memory, then persists only the accepted ops inside one `$transaction` so a batch lands atomically. Stock is still never stored; it is derived from the movement log exactly as in-memory.
+
+`src/server/main.ts` selects the implementation by `DATABASE_URL`. Adding another backend (SQLite/Mongo) means a new class implementing `LedgerStore` and nothing in the domain or sync layers — keep those pure to preserve that.
 
 ### API surface (`src/server/app.ts`)
 
