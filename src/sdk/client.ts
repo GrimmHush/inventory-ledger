@@ -65,7 +65,11 @@ export class InventoryClient {
   constructor(options: ClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.apiKey = options.apiKey;
-    this.doFetch = options.fetch ?? globalThis.fetch;
+    // Bind the default global fetch to the global object. The browser's `fetch`
+    // throws "Illegal invocation" if invoked with a `this` other than `window`,
+    // and we call it as `this.doFetch(...)` — a method of this client. An injected
+    // fetch is used as-is (it's the caller's to bind).
+    this.doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
   /**

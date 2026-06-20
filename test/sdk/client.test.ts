@@ -204,6 +204,27 @@ describe('InventoryClient', () => {
     expect(calls[0]?.url).toBe('http://example.test/api/sync');
   });
 
+  it('calls the default global fetch bound to the global (no Illegal invocation)', async () => {
+    // The browser's fetch throws "Illegal invocation" unless its `this` is the
+    // global. Emulate that brand check, then drive a client that did NOT inject a
+    // fetch, so it must use the bound global default. Without the bind, the client
+    // calls fetch as its own method (`this` === the client) and this rejects.
+    const original = globalThis.fetch;
+    try {
+      globalThis.fetch = function (this: unknown) {
+        if (this !== undefined && this !== globalThis) {
+          throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+        }
+        return Promise.resolve(json(200, { items: [], nextCursor: null }));
+      } as typeof globalThis.fetch;
+
+      const c = new InventoryClient({ baseUrl: 'http://example.test', apiKey: 'k' });
+      await expect(c.listItems()).resolves.toEqual({ items: [], nextCursor: null });
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it('throws a 401 when the key is rejected', async () => {
     const { client: c } = client(() => json(401, { error: 'invalid or missing API key' }));
     await expect(c.listItems()).rejects.toMatchObject({

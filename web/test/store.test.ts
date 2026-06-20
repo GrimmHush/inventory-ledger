@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   deriveStockByItem,
   emptyState,
@@ -50,20 +50,37 @@ function fakeServer() {
 }
 
 let dbCounter = 0;
+const stores: AppStore[] = [];
+
+// Dispose every store a test created, so its window listeners and retry timers
+// don't leak into the next test.
+afterEach(() => {
+  for (const store of stores) store.dispose();
+  stores.length = 0;
+});
+
 async function offlineStore(client: InventoryClient): Promise<AppStore> {
   const store = createAppStore(client, { dbName: `store-test-${dbCounter++}` });
+  stores.push(store);
   await store.init();
   window.dispatchEvent(new Event('offline'));
   expect(store.getSnapshot().online).toBe(false);
   return store;
 }
 
-/** Reconnect and wait for the event-driven flush to drain/settle. */
+/**
+ * Reconnect and wait for the event-driven flush to fully settle: not syncing and
+ * no `pending`/`inflight` ops left (only conflicts may remain). Waiting on
+ * `syncing` alone would race — it starts false, so the check could pass before the
+ * flush even begins.
+ */
 async function reconnect(store: AppStore): Promise<void> {
   window.dispatchEvent(new Event('online'));
   await vi.waitFor(() => {
     const snap = store.getSnapshot();
-    if (snap.syncing) throw new Error('still syncing');
+    const unsettled =
+      snap.syncing || snap.records.some((r) => r.status !== 'conflict');
+    if (unsettled) throw new Error('not settled');
   });
 }
 
@@ -74,8 +91,20 @@ describe('app store — offline queue, flush, reconcile', () => {
 
     await store.addItem({ sku: 'w-1', name: 'Widget' });
     const itemId = store.getSnapshot().view.items[0]!.id;
-    await store.addMovement({ itemId, type: 'in', quantity: 10 });
-    await store.addMovement({ itemId, type: 'out', quantity: 4 });
+    // Explicit, chronological occurredAt: same-millisecond defaults would let the
+    // ledger tie-break on id and (correctly) reject an out that sorts before the in.
+    await store.addMovement({
+      itemId,
+      type: 'in',
+      quantity: 10,
+      occurredAt: '2026-01-01T00:00:00.000Z',
+    });
+    await store.addMovement({
+      itemId,
+      type: 'out',
+      quantity: 4,
+      occurredAt: '2026-01-02T00:00:00.000Z',
+    });
 
     // Offline: nothing reached the server, but the optimistic fold shows 6.
     let snap = store.getSnapshot();
@@ -151,5 +180,38 @@ describe('app store — offline queue, flush, reconcile', () => {
     // Resolving by discarding clears the conflict.
     await store.discard(snap.records[0]!.op.id);
     expect(store.getSnapshot().records).toHaveLength(0);
+  });
+
+  it('retries a transport failure with backoff until it succeeds', async () => {
+    const server = fakeServer();
+    let calls = 0;
+    const flaky = {
+      sync(ops: SyncOp[]) {
+        calls += 1;
+        if (calls === 1) return Promise.reject(new Error('network down'));
+        return server.client.sync(ops);
+      },
+      iterateItems: () => server.client.iterateItems(),
+      iterateMovements: (id: string) => server.client.iterateMovements(id),
+    } as unknown as InventoryClient;
+
+    // Online from the start; fast backoff so the scheduled retry fires quickly.
+    const store = createAppStore(flaky, {
+      dbName: `store-test-${dbCounter++}`,
+      retryBaseMs: 5,
+      retryMaxMs: 20,
+    });
+    stores.push(store);
+    await store.init();
+
+    // The enqueue's auto-flush hits the first (failing) sync; the op stays queued.
+    await store.addItem({ sku: 'w-1', name: 'Widget' });
+
+    // The scheduled retry drains the queue on its own — only possible if it fired.
+    await vi.waitFor(() => {
+      if (store.getSnapshot().records.length !== 0) throw new Error('not drained');
+    });
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(store.getSnapshot().error).toBeNull();
   });
 });
