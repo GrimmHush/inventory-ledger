@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
+import { ArrowLeft } from '../icons';
 import { movementEffect, sortMovements, type Movement } from 'inventory-ledger';
 import { useStore } from '../useStore';
 import { ViewHeader } from '../ViewHeader';
@@ -32,7 +33,11 @@ export function ItemLedgerView() {
   return (
     <>
       <ViewHeader
-        eyebrow={<Link to="/items" className="crumb">← Items</Link>}
+        eyebrow={
+          <Link to="/items" className="crumb">
+            <ArrowLeft size={12} aria-hidden /> Items
+          </Link>
+        }
         title={item ? item.name : 'Unknown item'}
         right={
           item && (
