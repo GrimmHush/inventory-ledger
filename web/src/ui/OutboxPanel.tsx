@@ -5,9 +5,9 @@ import { ConflictBanner } from './ConflictBanner';
 
 function describe(record: OutboxRecord): string {
   const { op } = record;
-  if (op.kind === 'upsertItem') return `item ${op.item.name} (${op.item.sku})`;
+  if (op.kind === 'upsertItem') return `${op.item.name} · ${op.item.sku}`;
   const m = op.movement;
-  return `${m.type} ${m.quantity} on ${m.itemId}`;
+  return `${m.type} ${m.quantity} · ${m.itemId.slice(0, 8)}`;
 }
 
 export function OutboxPanel({
@@ -22,32 +22,40 @@ export function OutboxPanel({
   const queued = ordered.filter((r) => r.status !== 'conflict');
 
   return (
-    <section>
-      <h2>Outbox ({queued.length})</h2>
+    <aside className="panel outbox">
+      <div className="panel-head">
+        <h2 className="eyebrow">Outbox</h2>
+        <span className="count">{queued.length}</span>
+      </div>
 
-      {conflicts.map((record) => (
-        <ConflictBanner
-          key={record.op.id}
-          record={record}
-          onDiscard={() => void store.discard(record.op.id)}
-        />
-      ))}
+      {conflicts.length > 0 && (
+        <div className="conflicts">
+          {conflicts.map((record) => (
+            <ConflictBanner
+              key={record.op.id}
+              record={record}
+              onDiscard={() => void store.discard(record.op.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {queued.length === 0 ? (
-        <p className="muted">Queue empty — everything is synced.</p>
+        <p className="empty">Nothing queued — local changes appear here until they sync.</p>
       ) : (
-        <ul className="outbox">
-          {queued.map((record) => (
-            <li key={record.op.id}>
-              <span className={`tag tag-${record.status}`}>{record.status}</span>
-              <span>{describe(record)}</span>
-              {predicted[record.op.id] === 'rejected' && (
-                <span className="tag tag-warn">will reject</span>
-              )}
-            </li>
-          ))}
+        <ul className="oplist">
+          {queued.map((record) => {
+            const willReject = predicted[record.op.id] === 'rejected';
+            return (
+              <li key={record.op.id} className={`oprow ${willReject ? 'is-warn' : ''}`}>
+                <span className={`dot dot-${record.status}`} aria-hidden />
+                <span className="op-desc mono">{describe(record)}</span>
+                <span className="op-status">{willReject ? 'may reject' : record.status}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
-    </section>
+    </aside>
   );
 }

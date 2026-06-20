@@ -2,9 +2,9 @@ import type { OutboxRecord } from '../db';
 
 function describe(record: OutboxRecord): string {
   const { op } = record;
-  if (op.kind === 'upsertItem') return `item ${op.item.name} (${op.item.sku})`;
+  if (op.kind === 'upsertItem') return `${op.item.name} · ${op.item.sku}`;
   const m = op.movement;
-  return `${m.type} ${m.quantity} on ${m.itemId}`;
+  return `${m.type} ${m.quantity} · ${m.itemId.slice(0, 8)}`;
 }
 
 /**
@@ -25,11 +25,17 @@ export function ConflictBanner({
 
   return (
     <div className="conflict">
-      <div>
-        <strong>{outcome?.status ?? 'conflict'}</strong> — {describe(record)}
-        <div className="muted">{reason}</div>
+      <span className="dot dot-conflict" aria-hidden />
+      <div className="conflict-body">
+        <div className="conflict-head">
+          <span className="conflict-status">{outcome?.status ?? 'conflict'}</span>
+          <span className="conflict-desc mono">{describe(record)}</span>
+        </div>
+        <p className="conflict-reason">{reason}</p>
       </div>
-      <button onClick={onDiscard}>Discard</button>
+      <button className="btn btn-ghost" onClick={onDiscard}>
+        Discard
+      </button>
     </div>
   );
 }

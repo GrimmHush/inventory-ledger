@@ -64,11 +64,12 @@ describe('OutboxPanel', () => {
 
     render(<OutboxPanel records={[pending, conflict]} predicted={predicted} />);
 
-    // The header counts queued (non-conflict) ops only.
-    expect(screen.getByText('Outbox (1)')).toBeTruthy();
+    // The count badge counts queued (non-conflict) ops only.
+    expect(screen.getByText('Outbox')).toBeTruthy();
+    expect(screen.getByText('1')).toBeTruthy();
     // The conflict renders its banner reason.
     expect(screen.getByText('nope')).toBeTruthy();
     // A pending op predicted to reject is flagged.
-    expect(screen.getByText('will reject')).toBeTruthy();
+    expect(screen.getByText('may reject')).toBeTruthy();
   });
 });

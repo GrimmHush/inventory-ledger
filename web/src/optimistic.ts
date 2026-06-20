@@ -3,6 +3,7 @@ import {
   merge,
   type Item,
   type LedgerState,
+  type Movement,
   type OpOutcome,
   type SyncOp,
 } from 'inventory-ledger';
@@ -12,6 +13,8 @@ export type ItemView = Item & { stock: number };
 export interface OptimisticView {
   /** Items with derived stock, ascending by id. */
   items: ItemView[];
+  /** The merged movement log (server-confirmed + optimistically-applied). */
+  movements: Movement[];
   /** Predicted outcome status per op id, from folding pending ops locally. */
   predicted: Record<string, OpOutcome['status']>;
 }
@@ -34,5 +37,5 @@ export function project(serverMirror: LedgerState, pendingOps: readonly SyncOp[]
   const predicted: Record<string, OpOutcome['status']> = {};
   for (const outcome of outcomes) predicted[outcome.id] = outcome.status;
 
-  return { items, predicted };
+  return { items, movements: Object.values(state.movements), predicted };
 }
