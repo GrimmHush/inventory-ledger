@@ -44,6 +44,8 @@ export interface AppStore {
   addMovement(input: NewMovement): Promise<void>;
   flush(): Promise<void>;
   discard(opId: string): Promise<void>;
+  /** Remove window listeners and cancel any pending retry. Idempotent. */
+  dispose(): void;
 }
 
 /** Rebuild the authoritative mirror by paging every item and its ledger. */
@@ -71,15 +73,22 @@ async function readMirror(client: InventoryClient): Promise<LedgerState> {
  * immutable snapshot to React. All sync *logic* lives in the framework-free
  * modules it calls; this layer is just orchestration + the external-store contract.
  *
- * `client` and `dbName` are injectable so tests can drive it with a mock client and
- * an isolated fake-indexeddb database.
+ * `client`, `dbName`, and the retry timings are injectable so tests can drive it
+ * with a mock client, an isolated fake-indexeddb database, and fast backoff.
  */
 export function createAppStore(
   client: InventoryClient = defaultClient,
-  options: { dbName?: string } = {},
+  options: { dbName?: string; retryBaseMs?: number; retryMaxMs?: number } = {},
 ): AppStore {
+  const retryBaseMs = options.retryBaseMs ?? 1000;
+  const retryMaxMs = options.retryMaxMs ?? 30000;
+
   let db: OutboxDb | null = null;
   let mirror: LedgerState = emptyState();
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryAttempt = 0;
+  let onlineHandler: (() => void) | null = null;
+  let offlineHandler: (() => void) | null = null;
   const listeners = new Set<() => void>();
 
   let snapshot: AppSnapshot = {
@@ -104,15 +113,43 @@ export function createAppStore(
     set({ records, view: project(mirror, activeOps) });
   }
 
+  function clearRetry(): void {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+  }
+
+  /**
+   * Schedule a self-healing retry after a transport failure: exponential backoff
+   * (base doubled per attempt, capped) plus jitter so reconnecting clients don't
+   * retry in lockstep. A success resets the attempt counter. Business outcomes
+   * (rejected/superseded) don't reach here — `flushOnce` only throws on transport
+   * failures — so a conflict never triggers an endless retry.
+   */
+  function scheduleRetry(): void {
+    if (retryTimer !== null) return;
+    retryAttempt += 1;
+    const backoff = Math.min(retryBaseMs * 2 ** (retryAttempt - 1), retryMaxMs);
+    const delay = backoff + Math.floor(Math.random() * retryBaseMs);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void doFlush();
+    }, delay);
+  }
+
   async function doFlush(): Promise<void> {
     if (!db || !snapshot.online || snapshot.syncing) return;
     set({ syncing: true, error: null });
     try {
       const { flushed } = await flushOnce(db, client);
       if (flushed > 0) mirror = await readMirror(client);
+      retryAttempt = 0;
+      clearRetry();
       await refreshLocal();
     } catch (error) {
       set({ error: error instanceof Error ? error.message : String(error) });
+      scheduleRetry();
     } finally {
       set({ syncing: false });
     }
@@ -135,11 +172,18 @@ export function createAppStore(
       await recoverInflight(db);
 
       if (typeof window !== 'undefined') {
-        window.addEventListener('online', () => {
+        onlineHandler = () => {
           set({ online: true });
+          retryAttempt = 0;
+          clearRetry();
           void doFlush();
-        });
-        window.addEventListener('offline', () => set({ online: false }));
+        };
+        offlineHandler = () => {
+          set({ online: false });
+          clearRetry(); // no point retrying while offline; the online event re-flushes
+        };
+        window.addEventListener('online', onlineHandler);
+        window.addEventListener('offline', offlineHandler);
       }
 
       try {
@@ -188,6 +232,16 @@ export function createAppStore(
       if (!db) return;
       await discardConflict(db, opId);
       await refreshLocal();
+    },
+
+    dispose() {
+      clearRetry();
+      if (typeof window !== 'undefined') {
+        if (onlineHandler) window.removeEventListener('online', onlineHandler);
+        if (offlineHandler) window.removeEventListener('offline', offlineHandler);
+      }
+      onlineHandler = null;
+      offlineHandler = null;
     },
   };
 }
