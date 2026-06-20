@@ -128,10 +128,8 @@ body {
 }
 
 .nav-icon {
-  width: 16px;
-  text-align: center;
+  flex: none;
   color: var(--text-faint);
-  font-size: 13px;
 }
 
 .navlink.is-active .nav-icon {
@@ -284,6 +282,9 @@ body {
 }
 
 .crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-faint);
   text-decoration: none;
 }
@@ -415,6 +416,10 @@ body {
   width: 20px;
   text-align: right;
   color: var(--text-faint);
+}
+
+.chev svg {
+  vertical-align: middle;
 }
 
 .item-row:hover .chev {

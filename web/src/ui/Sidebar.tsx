@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { Package, RefreshCw } from './icons';
 import { store } from '../store';
 import { useStore } from './useStore';
 
@@ -20,16 +21,12 @@ export function Sidebar() {
 
       <nav className="side-nav">
         <NavLink to="/items" className={navClass}>
-          <span className="nav-icon" aria-hidden>
-            ▦
-          </span>
+          <Package className="nav-icon" size={16} strokeWidth={1.75} aria-hidden />
           Items
           <span className="nav-meta">{snap.view.items.length || ''}</span>
         </NavLink>
         <NavLink to="/sync" className={navClass}>
-          <span className="nav-icon" aria-hidden>
-            ⟳
-          </span>
+          <RefreshCw className="nav-icon" size={16} strokeWidth={1.75} aria-hidden />
           Sync
           {(queued > 0 || conflicts > 0) && (
             <span className={`nav-badge ${conflicts > 0 ? 'is-warn' : ''}`}>

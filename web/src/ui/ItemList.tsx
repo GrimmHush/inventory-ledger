@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronRight } from './icons';
 import { store } from '../store';
 import type { ItemView } from '../optimistic';
 
@@ -44,8 +45,8 @@ export function ItemList({ items }: { items: ItemView[] }) {
                   </Link>
                 </td>
                 <td className="num stock">{item.stock}</td>
-                <td className="chev" aria-hidden>
-                  ›
+                <td className="chev">
+                  <ChevronRight size={15} aria-hidden />
                 </td>
               </tr>
             ))}
