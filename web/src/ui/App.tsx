@@ -8,27 +8,38 @@ export function App() {
   const snap = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
   return (
-    <main>
+    <div className="app">
       <header className="topbar">
-        <h1>Inventory</h1>
-        <span className={`pill ${snap.online ? 'pill-online' : 'pill-offline'}`}>
-          {snap.online ? 'online' : 'offline'}
-        </span>
-        <button onClick={() => void store.flush()} disabled={!snap.online || snap.syncing}>
-          {snap.syncing ? 'Syncing…' : 'Sync now'}
-        </button>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden />
+          <span className="brand-name">Ledger</span>
+          <span className="brand-sub">inventory</span>
+        </div>
+        <div className="topbar-right">
+          <span className={`conn ${snap.online ? 'is-online' : 'is-offline'}`}>
+            <span className="conn-dot" aria-hidden />
+            {snap.online ? 'Online' : 'Offline'}
+          </span>
+          <button
+            className="btn btn-primary"
+            onClick={() => void store.flush()}
+            disabled={!snap.online || snap.syncing}
+          >
+            {snap.syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+        </div>
       </header>
 
-      {!snap.ready && <p className="muted">Loading…</p>}
-      {snap.error && <p className="error">Sync error: {snap.error}</p>}
+      {snap.error && <div className="banner-error">{snap.error}</div>}
+      {!snap.ready && <div className="loading">Connecting…</div>}
 
-      <div className="columns">
-        <div>
+      <main className="content">
+        <div className="col-main">
           <ItemList items={snap.view.items} />
           <MovementForm items={snap.view.items} />
         </div>
         <OutboxPanel records={snap.records} predicted={snap.view.predicted} />
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
