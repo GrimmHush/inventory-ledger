@@ -96,7 +96,7 @@ export function createAppStore(
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
     syncing: false,
     records: [],
-    view: { items: [], predicted: {} },
+    view: { items: [], movements: [], predicted: {} },
     error: null,
   };
 
