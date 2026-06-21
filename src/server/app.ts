@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import express, {
   type Express,
   type NextFunction,
@@ -70,6 +71,20 @@ function parsePage<C>(
 }
 
 /**
+ * Constant-time API-key check. Both sides are hashed to a fixed-length SHA-256
+ * digest first, so the buffers handed to `timingSafeEqual` are always equal
+ * length (it throws otherwise) and the comparison neither short-circuits nor
+ * leaks the key's length through timing.
+ */
+function apiKeyMatches(provided: string | undefined, expected: string): boolean {
+  const providedHash = createHash('sha256')
+    .update(provided ?? '')
+    .digest();
+  const expectedHash = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(providedHash, expectedHash);
+}
+
+/**
  * Builds the Express app. Takes its dependencies as options so tests can inject
  * a fresh store and a known API key — no globals, no singletons.
  */
@@ -90,7 +105,7 @@ export function createApp(options: AppOptions): Express {
   });
 
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.header('x-api-key') !== options.apiKey) {
+    if (!apiKeyMatches(req.header('x-api-key'), options.apiKey)) {
       res.status(401).json({ error: 'invalid or missing API key' });
       return;
     }
