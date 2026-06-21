@@ -2,7 +2,7 @@
 
 **Stock is never stored — it is *derived* by folding an append-only log of movements. That single decision is what makes offline-first sync _safe_, not merely possible.**
 
-An offline-first inventory service built around an **append-only movement ledger**. It ships with a typed REST API, a typed client SDK, and a fully tested sync core that reconciles changes made by clients while they were offline.
+An offline-first inventory service built around an **append-only movement ledger**. It ships with a typed REST API, a typed client SDK, a fully tested sync core that reconciles changes made by clients while they were offline, and a browser client ([`web/`](web/README.md)) that queues movements in IndexedDB while offline and flushes them on reconnect — running the *same* pure merge in the browser that the server runs.
 
 It is small on purpose. The interesting part is not the feature count — it's the data model and the merge logic, which are designed to make offline-first **safe** rather than merely possible.
 
@@ -182,6 +182,9 @@ The codebase is layered so the interesting logic is pure and the I/O is thin:
 | Sync | `src/sync` | The offline reconciliation merge. Pure, deterministic, the heart of the project. |
 | Server | `src/server` | An Express API with API-key auth, zod validation, and a pluggable `LedgerStore`. |
 | SDK | `src/sdk` | A typed client whose return types flow from the same domain model. |
+| Web | `web/` | An offline-first browser client (separate npm workspace) that consumes the library's public surface. |
+
+The `web/` workspace is a consumer of the library, not a layer of it: it imports the published surface (`merge`, `deriveStockByItem`, `InventoryClient`) and adds an IndexedDB outbox plus a React UI, so the *same* pure `merge` folds stock optimistically in the browser and authoritatively on the server. It doesn't affect the library's build — see [`web/PLAN.md`](web/PLAN.md) for its design.
 
 The persistence boundary is deliberate: domain and sync logic are pure functions, and the only stateful piece is the `LedgerStore` interface in `src/server/store.ts`. It has two implementations behind the same contract — `InMemoryLedgerStore` (the default) and `PrismaLedgerStore` (Postgres, via Prisma + `@prisma/adapter-pg`) — selected at startup by `DATABASE_URL`. Both reuse the same pure `merge`. The Postgres store does the read, merge, and writes inside one `Serializable` transaction (retried on conflict) so concurrent withdrawals can't both pass the overdraw check; it scopes the read to the items a batch touches; and it keeps a denormalized `stock` checkpoint column — refreshed transactionally, derived from the log — so listing stock doesn't fold the whole history. Adding SQLite or Mongo means a new class implementing the interface and nothing else.
 
@@ -203,9 +206,10 @@ This project is deliberately small. Its value is **depth on a single idea** — 
 
 ## Roadmap
 
-Deliberately out of scope for now, in rough priority order:
+The browser/local client that queues ops in IndexedDB and syncs on reconnect — once the first item here — is now built; see [`web/`](web/README.md).
 
-- A browser/local client that queues ops in IndexedDB and syncs on reconnect
+Still deliberately out of scope for now, in rough priority order:
+
 - Users, organizations, and per-org data scoping
 - Multiple stock locations / warehouses
 - Double-entry accounting on top of the same ledger primitive
