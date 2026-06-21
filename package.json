@@ -26,6 +26,7 @@
     "postinstall": "prisma generate",
     "dev": "tsx watch src/server/main.ts",
     "start": "tsx src/server/main.ts",
+    "demo": "tsx demo/sync-demo.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
