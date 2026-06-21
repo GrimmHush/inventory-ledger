@@ -30,8 +30,10 @@ function move(partial: Partial<Movement> & Pick<Movement, 'id' | 'type'>): Movem
 }
 
 // Gated on DATABASE_URL: runs locally against the docker Postgres (see
-// docker-compose.yml + `npx prisma db push`), and is skipped in CI where no
-// database is provisioned. The schema is assumed already pushed.
+// docker-compose.yml) and in CI against the Postgres service container (see
+// .github/workflows/ci.yml), and is skipped only when neither is present. The
+// schema is provisioned from the versioned migrations via `npx prisma migrate
+// deploy` (not `db push`) — locally before running, and as a CI step.
 describe.skipIf(!databaseUrl)('PrismaLedgerStore (integration)', () => {
   let prisma: PrismaClient;
   let store: PrismaLedgerStore;
