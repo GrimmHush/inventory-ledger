@@ -5,9 +5,12 @@ framework-free engine (`db`/`outbox`/`optimistic`/`sync-controller`), the React 
 conflict surfacing + crash recovery, and tests — engine unit tests
 (`test/outbox.test.ts`), a store-level integration test driving the full offline →
 flush → reconcile loop incl. a conflict-kept case (`test/store.test.ts`), and
-component tests for the conflict UI (`test/ui.test.tsx`). Remaining: the manual
-README demo walkthrough (needs a browser). This document remains the spec — see
-[`README.md`](./README.md) to run it. First item on the root roadmap ("A
+component tests for the conflict UI (`test/ui.test.tsx`). The end-to-end
+offline → flush → reconcile story is also shown as a runnable transcript at the repo
+root (`npm run demo`, [`demo/sync-demo.ts`](../demo/sync-demo.ts)) — same pure
+`merge`, no browser required; the browser walkthrough below is the visual version
+(offline toggled via DevTools). This document remains the spec — see
+[`README.md`](./README.md) to run the app. First item on the root roadmap ("A
 browser/local client that queues ops in IndexedDB and syncs on reconnect").
 
 ## 1. Goal & acceptance

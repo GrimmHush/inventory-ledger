@@ -20,6 +20,50 @@ This service avoids that by never storing stock at all. Stock is **derived** fro
 
 The merge function returns a per-op outcome — `applied`, `superseded`, `duplicate`, or `rejected` — so a client knows the exact fate of every pending change. That logic lives in [`src/sync/merge.ts`](src/sync/merge.ts) and is the file worth reading first.
 
+## Demo: watch offline → queue → reconcile
+
+`npm run demo` plays the whole thesis out end to end. It starts the real API in
+process, drives it through the real SDK over HTTP, and predicts offline stock with
+the **same** pure `merge` the server runs — then narrates two devices going offline,
+queuing changes, and reconnecting. Nothing is mocked; the values below are the
+script's actual output ([`demo/sync-demo.ts`](demo/sync-demo.ts)):
+
+```text
+1. Online: one source of truth, stock derived from the ledger
+  online    create item bolt (Bolt M6), receive 100 in
+  online    server stock = 100
+            both devices sync, then lose connectivity ↓
+
+2. Offline: each device queues actions; stock folds locally
+  phone     sells 70  → optimistic stock 30 (outbox: 1)
+  tablet    renames → "Bolt M6 (steel)", sells 60
+  tablet    optimistic stock 40 (outbox: 2)
+            neither device can see the other's pending sale — that's the crux
+
+3. Phone reconnects: queue flushes, server reconciles
+  phone     also renamed offline → "Bolt M6 (zinc-plated)" (updatedAt 09:25)
+            ok phone-sell    APPLIED
+            ok phone-rename  APPLIED
+  phone     confirmed: stock 30, name "Bolt M6 (zinc-plated)"
+
+4. At-least-once delivery: a replayed op is a harmless duplicate
+  phone     re-sends the 70-unit sale after a dropped response
+            ~  phone-sell    DUPLICATE
+
+5. Tablet reconnects: optimism meets reality
+  tablet    showed stock 40, name "Bolt M6 (steel)" while offline
+  tablet    flushes its 2 queued ops…
+            !! tablet-rename SUPERSEDED — a newer version of this item already exists
+            !! tablet-sell   REJECTED — would drive stock of item bolt negative
+  tablet    reality: stock 30, name "Bolt M6 (zinc-plated)"
+  tablet    2 op(s) kept as conflicts to resolve (discard or re-record)
+```
+
+The tablet's `40` was never real: once the phone's sale is folded in, a second
+withdrawal overdraws and is **rejected** — the exact case naive last-write-wins
+corrupts silently. For the same flow in a browser (offline toggled via DevTools),
+see [`web/`](web/README.md).
+
 ## Quickstart
 
 ```bash
