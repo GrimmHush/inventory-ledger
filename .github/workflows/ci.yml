@@ -41,5 +41,8 @@ jobs:
       - run: npm run build
       # web workspace (its own jsdom + fake-indexeddb vitest config; no lint
       # script of its own, and the root ESLint config ignores web/).
+      # Must run AFTER `npm run build`: web resolves `inventory-ledger` through the
+      # package exports map (built dist/), not the TS source, so running these
+      # before build fails with TS2307 (cannot find module 'inventory-ledger').
       - run: npm run typecheck -w @inventory-ledger/web
       - run: npm test -w @inventory-ledger/web
