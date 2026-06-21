@@ -178,6 +178,10 @@ The persistence boundary is deliberate: domain and sync logic are pure functions
 
 CI runs typecheck, lint, tests, and build on every push and pull request, with a Postgres service so the database-backed integration tests run there too.
 
+## Scope & non-goals
+
+This project is deliberately small. Its value is **depth on a single idea** — a safe offline-first sync model — rather than breadth of features, and the roadmap below sketches where that model generalizes rather than listing committed work. Building those items out would trade a sharp, complete artifact for a sprawling, incomplete one; keeping the scope tight is the engineering choice.
+
 ## Roadmap
 
 Deliberately out of scope for now, in rough priority order:
@@ -186,6 +190,10 @@ Deliberately out of scope for now, in rough priority order:
 - Users, organizations, and per-org data scoping
 - Multiple stock locations / warehouses
 - Double-entry accounting on top of the same ledger primitive
+
+## Where this generalizes
+
+A single signed movement is the degenerate case of a **balanced two-entry transfer**: every movement implicitly has a *from* and a *to*, and conserves quantity between them. Under that lens a receipt is `EXTERNAL → warehouse`, a sale is `warehouse → EXTERNAL`, and a stock correction is a transfer to or from an adjustment account. Seen this way, **multi-location stock** and **double-entry accounting** stop being two separate features and collapse into the same primitive — a transfer between two accounts, one of which may be the outside world. This is a sketch of where the model extends, *not* current functionality: today a movement is single-sided (`in` / `out` / `adjust` on one item).
 
 ## License
 
