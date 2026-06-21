@@ -1,5 +1,7 @@
 # inventory-ledger
 
+**Stock is never stored — it is *derived* by folding an append-only log of movements. That single decision is what makes offline-first sync _safe_, not merely possible.**
+
 An offline-first inventory service built around an **append-only movement ledger**. It ships with a typed REST API, a typed client SDK, and a fully tested sync core that reconciles changes made by clients while they were offline.
 
 It is small on purpose. The interesting part is not the feature count — it's the data model and the merge logic, which are designed to make offline-first **safe** rather than merely possible.
@@ -29,40 +31,63 @@ queuing changes, and reconnecting. Nothing is mocked; the values below are the
 script's actual output ([`demo/sync-demo.ts`](demo/sync-demo.ts)):
 
 ```text
-1. Online: one source of truth, stock derived from the ledger
+==========================================================================
+  1. Online: one source of truth, stock derived from the ledger
+==========================================================================
   online    create item bolt (Bolt M6), receive 100 in
   online    server stock = 100
             both devices sync, then lose connectivity ↓
 
-2. Offline: each device queues actions; stock folds locally
+==========================================================================
+  2. Offline: each device queues actions; stock folds locally
+==========================================================================
   phone     sells 70  → optimistic stock 30 (outbox: 1)
   tablet    renames → "Bolt M6 (steel)", sells 60
   tablet    optimistic stock 40 (outbox: 2)
             neither device can see the other's pending sale — that's the crux
 
-3. Phone reconnects: queue flushes, server reconciles
+==========================================================================
+  3. Phone reconnects: queue flushes, server reconciles
+==========================================================================
   phone     also renamed offline → "Bolt M6 (zinc-plated)" (updatedAt 09:25)
             ok phone-sell    APPLIED
             ok phone-rename  APPLIED
   phone     confirmed: stock 30, name "Bolt M6 (zinc-plated)"
 
-4. At-least-once delivery: a replayed op is a harmless duplicate
+==========================================================================
+  4. At-least-once delivery: a replayed op is a harmless duplicate
+==========================================================================
   phone     re-sends the 70-unit sale after a dropped response
             ~  phone-sell    DUPLICATE
 
-5. Tablet reconnects: optimism meets reality
+==========================================================================
+  5. Tablet reconnects: optimism meets reality
+==========================================================================
   tablet    showed stock 40, name "Bolt M6 (steel)" while offline
   tablet    flushes its 2 queued ops…
             !! tablet-rename SUPERSEDED — a newer version of this item already exists
             !! tablet-sell   REJECTED — would drive stock of item bolt negative
   tablet    reality: stock 30, name "Bolt M6 (zinc-plated)"
   tablet    2 op(s) kept as conflicts to resolve (discard or re-record)
+
+==========================================================================
+  Recap: every pending change has a known fate
+==========================================================================
+  applied     phone sale + rename committed
+  duplicate   the replayed sale was deduped by id (no double-count)
+  superseded  tablet's rename lost LWW to phone's newer edit
+  rejected    tablet sale would overdraw once both sales are known —
+              the exact case naive last-write-wins corrupts silently
 ```
 
 The tablet's `40` was never real: once the phone's sale is folded in, a second
 withdrawal overdraws and is **rejected** — the exact case naive last-write-wins
 corrupts silently. For the same flow in a browser (offline toggled via DevTools),
 see [`web/`](web/README.md).
+
+## Start here
+
+If you read one file, read **[`src/sync/merge.ts`](src/sync/merge.ts)** — it's the heart of the project. Everything below this point is reference material for once you've decided to look deeper: how to run it, the full API surface, the layering, and where the model is headed.
 
 ## Quickstart
 
@@ -172,6 +197,10 @@ The persistence boundary is deliberate: domain and sync logic are pure functions
 
 CI runs typecheck, lint, tests, and build on every push and pull request, with a Postgres service so the database-backed integration tests run there too.
 
+## Scope & non-goals
+
+This project is deliberately small. Its value is **depth on a single idea** — a safe offline-first sync model — rather than breadth of features, and the roadmap below sketches where that model generalizes rather than listing committed work. Building those items out would trade a sharp, complete artifact for a sprawling, incomplete one; keeping the scope tight is the engineering choice.
+
 ## Roadmap
 
 Deliberately out of scope for now, in rough priority order:
@@ -180,6 +209,10 @@ Deliberately out of scope for now, in rough priority order:
 - Users, organizations, and per-org data scoping
 - Multiple stock locations / warehouses
 - Double-entry accounting on top of the same ledger primitive
+
+## Where this generalizes
+
+A single signed movement is the degenerate case of a **balanced two-entry transfer**: every movement implicitly has a *from* and a *to*, and conserves quantity between them. Under that lens a receipt is `EXTERNAL → warehouse`, a sale is `warehouse → EXTERNAL`, and a stock correction is a transfer to or from an adjustment account. Seen this way, **multi-location stock** and **double-entry accounting** stop being two separate features and collapse into the same primitive — a transfer between two accounts, one of which may be the outside world. This is a sketch of where the model extends, *not* current functionality: today a movement is single-sided (`in` / `out` / `adjust` on one item).
 
 ## License
 
