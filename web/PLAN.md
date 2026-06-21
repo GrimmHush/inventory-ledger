@@ -58,9 +58,10 @@ the domain/sync types, and `InventoryClient`). **No new library exports required
 
 ```
 web/                          # npm workspace; does NOT affect the library's tsup bundle
-  package.json                # deps: inventory-ledger, idb, react, react-dom
-                              # devDeps: vite, @vitejs/plugin-react, typescript, vitest,
-                              #          fake-indexeddb, @testing-library/react
+  package.json                # deps: inventory-ledger, idb, react, react-dom, react-router-dom
+                              # devDeps: vite, @vitejs/plugin-react, typescript, vitest, jsdom,
+                              #          fake-indexeddb, @testing-library/react,
+                              #          @types/react, @types/react-dom
   vite.config.ts              # dev proxy /api -> http://localhost:3000 (see §5)
   tsconfig.json
   index.html
@@ -72,12 +73,21 @@ web/                          # npm workspace; does NOT affect the library's tsu
     sync-controller.ts        # online detection, flush loop, backoff, recovery (§9) [no React]
     store.ts                  # external store: subscribe()/getSnapshot() over outbox + online state
     ui/
-      App.tsx
+      App.tsx                 # app shell + react-router-dom routes
+      Sidebar.tsx             # nav between the views
+      ViewHeader.tsx          # shared per-view header (online/sync status)
       ItemList.tsx
       MovementForm.tsx
       OutboxPanel.tsx
       ConflictBanner.tsx
-    main.tsx                  # createRoot(...).render(<App/>)
+      icons.tsx               # inlined Lucide nav icons
+      styles.css
+      useStore.ts             # useSyncExternalStore hook over store.ts
+      views/
+        ItemsView.tsx
+        ItemLedgerView.tsx
+        SyncView.tsx
+    main.tsx                  # createRoot(...).render(<App/>) inside the router
 ```
 
 The sync engine (`outbox`, `optimistic`, `sync-controller`, `store`) is DOM- and
