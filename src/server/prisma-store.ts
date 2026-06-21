@@ -106,9 +106,13 @@ function backoff(attempt: number): Promise<void> {
  * on stale data — a concurrent writer forces a serialization failure and a retry.
  *
  * The read is *scoped to the touched items*, not the whole database, so a write
- * is O(those items' history) rather than O(entire ledger) — and the transaction's
- * read set only covers those items, so writes to unrelated items don't conflict.
- * A denormalized `stock` column, refreshed in the same transaction, lets `items()`
+ * is O(those items' history) rather than O(entire ledger), which keeps the
+ * transaction's read set — and thus its conflict footprint — tight. That narrows
+ * contention but doesn't eliminate it: Postgres SSI takes predicate locks at
+ * index/page granularity, so disjoint batches can still trip a false-positive
+ * serialization failure; the retry loop absorbs those (and genuine conflicts)
+ * transparently. A denormalized `stock` column, refreshed in the same transaction,
+ * lets `items()`
  * list stock without folding the log. Stock is still *derived* from movements
  * (the log is the source of truth); the column is a checkpoint of that fold.
  */
