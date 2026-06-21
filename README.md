@@ -1,5 +1,7 @@
 # inventory-ledger
 
+**Stock is never stored — it is *derived* by folding an append-only log of movements. That single decision is what makes offline-first sync _safe_, not merely possible.**
+
 An offline-first inventory service built around an **append-only movement ledger**. It ships with a typed REST API, a typed client SDK, and a fully tested sync core that reconciles changes made by clients while they were offline.
 
 It is small on purpose. The interesting part is not the feature count — it's the data model and the merge logic, which are designed to make offline-first **safe** rather than merely possible.
@@ -63,6 +65,10 @@ The tablet's `40` was never real: once the phone's sale is folded in, a second
 withdrawal overdraws and is **rejected** — the exact case naive last-write-wins
 corrupts silently. For the same flow in a browser (offline toggled via DevTools),
 see [`web/`](web/README.md).
+
+## Start here
+
+If you read one file, read **[`src/sync/merge.ts`](src/sync/merge.ts)** — it's the heart of the project. Everything below this point is reference material for once you've decided to look deeper: how to run it, the full API surface, the layering, and where the model is headed.
 
 ## Quickstart
 
