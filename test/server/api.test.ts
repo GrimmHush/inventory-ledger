@@ -41,6 +41,28 @@ describe('inventory API', () => {
     expect(res.status).toBe(401);
   });
 
+  it('rejects a wrong key with 401 and accepts the correct key', async () => {
+    const server = app();
+
+    const wrong = await request(server)
+      .get('/api/items')
+      .set('x-api-key', 'not-the-key');
+    expect(wrong.status).toBe(401);
+    expect(wrong.body).toEqual({ error: 'invalid or missing API key' });
+
+    // A key that shares a prefix but differs in length must also be rejected —
+    // the constant-time check compares fixed-length digests, not raw strings.
+    const longer = await request(server)
+      .get('/api/items')
+      .set('x-api-key', `${API_KEY}-extra`);
+    expect(longer.status).toBe(401);
+
+    const right = await request(server)
+      .get('/api/items')
+      .set('x-api-key', API_KEY);
+    expect(right.status).toBe(200);
+  });
+
   it('creates an item and a movement, then derives stock on list', async () => {
     const server = app();
 

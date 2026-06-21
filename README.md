@@ -24,7 +24,7 @@ The merge function returns a per-op outcome — `applied`, `superseded`, `duplic
 
 ```bash
 npm install
-npm test          # 57 tests (11 need Postgres and skip without it; see below)
+npm test          # 59 tests (11 need Postgres and skip without it; see below)
 npm run dev       # starts the API on http://localhost:3000 (in-memory store)
 ```
 
