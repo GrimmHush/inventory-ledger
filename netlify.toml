@@ -1,0 +1,18 @@
+# Deploys the web/ client as a standalone, backend-free portfolio demo.
+# VITE_DEMO_OFFLINE makes it a permanently-offline client (no /api/sync calls),
+# so it showcases offline queueing and the client-side merge/overdraw proof
+# without a server. See web/README.md.
+[build]
+  command = "npm run build && npm run build --workspace=web"
+  publish = "web/dist"
+
+[build.environment]
+  VITE_DEMO_OFFLINE = "1"
+  NODE_VERSION = "20"
+
+# SPA fallback — the BrowserRouter routes (/items, /items/:id, /sync) must all
+# serve index.html so deep links and reloads resolve client-side.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
