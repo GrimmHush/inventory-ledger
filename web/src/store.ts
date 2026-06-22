@@ -78,10 +78,21 @@ async function readMirror(client: InventoryClient): Promise<LedgerState> {
  */
 export function createAppStore(
   client: InventoryClient = defaultClient,
-  options: { dbName?: string; retryBaseMs?: number; retryMaxMs?: number } = {},
+  options: {
+    dbName?: string;
+    retryBaseMs?: number;
+    retryMaxMs?: number;
+    /**
+     * Run as a permanently-offline demo: never contact the server, so the client
+     * showcases offline queueing and the client-side merge/overdraw proof without a
+     * backend. Defaults to the VITE_DEMO_OFFLINE build flag.
+     */
+    demoOffline?: boolean;
+  } = {},
 ): AppStore {
   const retryBaseMs = options.retryBaseMs ?? 1000;
   const retryMaxMs = options.retryMaxMs ?? 30000;
+  const demoOffline = options.demoOffline ?? import.meta.env.VITE_DEMO_OFFLINE === '1';
 
   let db: OutboxDb | null = null;
   let mirror: LedgerState = emptyState();
@@ -93,7 +104,7 @@ export function createAppStore(
 
   let snapshot: AppSnapshot = {
     ready: false,
-    online: typeof navigator === 'undefined' ? true : navigator.onLine,
+    online: demoOffline ? false : typeof navigator === 'undefined' ? true : navigator.onLine,
     syncing: false,
     records: [],
     view: { items: [], movements: [], predicted: {} },
@@ -139,7 +150,7 @@ export function createAppStore(
   }
 
   async function doFlush(): Promise<void> {
-    if (!db || !snapshot.online || snapshot.syncing) return;
+    if (!db || demoOffline || !snapshot.online || snapshot.syncing) return;
     set({ syncing: true, error: null });
     try {
       const { flushed } = await flushOnce(db, client);
@@ -171,7 +182,9 @@ export function createAppStore(
       db = await openOutboxDb(options.dbName);
       await recoverInflight(db);
 
-      if (typeof window !== 'undefined') {
+      // Demo mode stays offline by design: no connectivity listeners, no server
+      // read. The mirror stays empty and everything runs from the local outbox.
+      if (typeof window !== 'undefined' && !demoOffline) {
         onlineHandler = () => {
           set({ online: true });
           retryAttempt = 0;
@@ -186,10 +199,12 @@ export function createAppStore(
         window.addEventListener('offline', offlineHandler);
       }
 
-      try {
-        mirror = await readMirror(client);
-      } catch (error) {
-        set({ error: error instanceof Error ? error.message : String(error) });
+      if (!demoOffline) {
+        try {
+          mirror = await readMirror(client);
+        } catch (error) {
+          set({ error: error instanceof Error ? error.message : String(error) });
+        }
       }
       set({ ready: true });
       await refreshLocal();
