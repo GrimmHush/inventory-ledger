@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build && npm run build --workspace=web",
+  "outputDirectory": "web/dist",
+  "build": {
+    "env": {
+      "VITE_DEMO_OFFLINE": "1"
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
